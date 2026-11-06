@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gメーター</title>
+<style>
+:root{--bg:#eef1f3;--fg:#12202e;--mut:#5f6f7e;--ring:#b8c2cb;--ball:#1f5eff;--panel:#fff;--btn:#12202e;--btnfg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a24;--fg:#e6edf3;--mut:#8ea0b1;--ring:#2c3d4d;--ball:#ffb020;--panel:#16232f;--btn:#e6edf3;--btnfg:#0f1a24}}
+:root[data-theme="dark"]{--bg:#0f1a24;--fg:#e6edf3;--mut:#8ea0b1;--ring:#2c3d4d;--ball:#ffb020;--panel:#16232f;--btn:#e6edf3;--btnfg:#0f1a24}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",system-ui,sans-serif}
+main{max-width:460px;margin:0 auto;padding:16px 16px 28px}
+h1{font-size:1.1rem;margin:4px 0 12px;font-weight:700}
+canvas{display:block;width:100%;aspect-ratio:1;touch-action:none;background:var(--panel);border-radius:50%}
+.big{text-align:center;margin:14px 0 4px;font-variant-numeric:tabular-nums}
+.big b{font-size:3.4rem;font-weight:700;letter-spacing:-.02em}
+.big span{font-size:1rem;color:var(--mut);margin-left:4px}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0;font-variant-numeric:tabular-nums}
+.row div{background:var(--panel);border-radius:10px;padding:8px 10px}
+.row small{display:block;color:var(--mut);font-size:.72rem}
+.row strong{font-size:1.1rem}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+button{font:inherit;font-size:.9rem;padding:10px 14px;border-radius:10px;border:1px solid var(--ring);background:var(--panel);color:var(--fg)}
+button.p{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
+button:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
+#msg{color:var(--mut);font-size:.85rem;min-height:2.4em;margin:10px 0 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Gメーター</h1>
+<canvas id="c" aria-label="Gボール"></canvas>
+<div class="big"><b id="mag">0.00</b><span>G</span></div>
+<div class="row">
+<div><small>左右</small><strong id="gx">0.00</strong></div>
+<div><small>前後</small><strong id="gy">0.00</strong></div>
+<div><small>最大</small><strong id="pk">0.00</strong></div>
+</div>
+<div class="btns">
+<button class="p" id="start">センサー開始</button>
+<button id="cal">0点合わせ</button>
+<button id="rst">最大値を消す</button>
+<button id="fx">左右反転</button>
+<button id="fy">前後反転</button>
+</div>
+<p id="msg">「センサー開始」を押すと、傾きや加減速でボールが動きます。ボールをドラッグしても試せます。</p>
+</main>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},sx=ios?1:-1,sy=ios?-1:1,peak=0,trail=[],sensor=false,drag=null;
+const msg=t=>{$('msg').textContent=t};
+function size(){const d=devicePixelRatio||1,w=cv.clientWidth;cv.width=cv.height=Math.round(w*d);ctx.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',size);size();
+function onMotion(e){
+  const a=e.accelerationIncludingGravity;
+  if(!a||a.x==null||a.y==null)return;
+  if(!sensor){sensor=true;msg('センサー動作中。スマホを動かない状態に置いて「0点合わせ」を押すと基準になります。')}
+  raw.x=a.x/9.81;raw.y=a.y/9.81;
+}
+async function start(){
+  try{
+    if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
+      const r=await DeviceMotionEvent.requestPermission();
+      if(r!=='granted'){msg('モーションセンサーの許可が必要です。Safariの設定でこのサイトの動作と方向へのアクセスを許可してください。');return}
+    }
+    addEventListener('devicemotion',onMotion);
+    msg('センサーの値を待っています…');
+    setTimeout(()=>{if(!sensor)msg('センサーの値を取得できません。この画面ではボールのドラッグで試せます。公開リンクをSafariで直接開くと動く場合があります。')},1600);
+  }catch(e){msg('センサーを開始できませんでした。ボールをドラッグして試せます。')}
+}
+const calibrate=()=>{off={x:sx*raw.x,y:sy*raw.y}};
+$('start').onclick=start;
+$('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
+$('rst').onclick=()=>{peak=0;trail=[]};
+$('fx').onclick=()=>{sx=-sx;calibrate()};
+$('fy').onclick=()=>{sy=-sy;calibrate()};
+function pt(e){const r=cv.getBoundingClientRect(),R=r.width/2;return{x:(e.clientX-r.left-R)/R,y:(e.clientY-r.top-R)/R}}
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);drag=pt(e)});
+cv.addEventListener('pointermove',e=>{if(drag)drag=pt(e)});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{drag=null}));
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function draw(){
+  const w=cv.clientWidth,R=w/2,ring=css('--ring'),ball=css('--ball');
+  ctx.clearRect(0,0,w,w);
+  ctx.strokeStyle=ring;ctx.lineWidth=1;
+  for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(R,R,R*.94*i/4,0,7);ctx.stroke()}
+  ctx.beginPath();ctx.moveTo(R,R*.06);ctx.lineTo(R,w-R*.06);ctx.moveTo(R*.06,R);ctx.lineTo(w-R*.06,R);ctx.stroke();
+  ctx.fillStyle=ring;ctx.font='11px system-ui';ctx.textAlign='left';
+  [.25,.5,.75,1].forEach(g=>ctx.fillText(g+'G',R+4,R-R*.94*g-3+0));
+  trail.forEach((p,i)=>{ctx.globalAlpha=i/trail.length*.35;ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+p.x*R*.94,R+p.y*R*.94,R*.025,0,7);ctx.fill()});
+  ctx.globalAlpha=1;
+  let bx=sg.x,by=sg.y,l=Math.hypot(bx,by);
+  if(l>1){bx/=l;by/=l}
+  ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+bx*R*.94,R+by*R*.94,R*.07,0,7);ctx.fill();
+}
+function loop(){
+  let tx=0,ty=0;
+  if(drag){tx=drag.x;ty=drag.y}
+  else if(sensor){tx=sx*raw.x-off.x;ty=sy*raw.y-off.y}
+  sg.x+=(tx-sg.x)*.2;sg.y+=(ty-sg.y)*.2;
+  const m=Math.hypot(sg.x,sg.y);
+  if(m>peak)peak=m;
+  trail.push({x:Math.max(-1,Math.min(1,sg.x)),y:Math.max(-1,Math.min(1,sg.y))});
+  if(trail.length>40)trail.shift();
+  $('mag').textContent=m.toFixed(2);
+  $('gx').textContent=sg.x.toFixed(2);
+  $('gy').textContent=(-sg.y).toFixed(2);
+  $('pk').textContent=peak.toFixed(2);
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
