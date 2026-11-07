@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.0.2 (2026-11-07) 設定に制限速度サーバーの接続テストを追加。取得エラー時は制限の欄に「×」を表示
   1.0.1 (2026-11-07) 制限速度の取得を修正（問い合わせ方式の変更）。道路はあるが制限速度が未登録なら「?」を表示。設定に取得状況を表示
   1.0.0 (2026-11-07) バージョン管理を開始。Gメーター、最大Gの軌跡、ログ記録・再生・CSV、
                      走行マップ、Gに応じた警告音、制限速度の表示と超過通知（マージン0〜50km/h、超過ごとに3回）
@@ -115,13 +116,14 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
+<div class="set"><span>制限速度の接続テスト</span><button id="ltest">テスト</button></div>
 <p class="mcap" id="limst"></p>
-<p class="mcap">制限の欄：「…」取得中　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
+<p class="mcap">制限の欄：「…」取得中　「×」取得エラー　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
 <p class="mcap" id="ver"></p>
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.0.1',APP_DATE='2026-11-07';
+const APP_VERSION='1.0.2',APP_DATE='2026-11-07';
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -332,6 +334,19 @@ const covered=(la,lo)=>roads&&dist(roads.la,roads.lo,la,lo)<600;
 const errText=e=>e&&e.name==='AbortError'?'時間切れ':((e&&e.message)||'通信エラー');
 function limOk(){limFails=0;limStat.t=new Date();limStat.err='';limStat.n=(roads?roads.ways.length:0)+(near?near.ways.filter(w=>w.lim!=null).length:0)}
 function limFail(e){limStat.err=errText(e);if(++limFails===3)msg('制限速度のデータを取得できません（'+limStat.err+'）。電波の状態を確認してください。')}
+$('ltest').onclick=async e=>{
+  const b=e.target;b.disabled=true;$('limst').textContent='接続テスト中…（最大20秒）';
+  const res=[];
+  for(const u of OVPS){
+    const t0=performance.now(),ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),10000);
+    try{
+      const r=await fetch(u+'?data='+encodeURIComponent('[out:json][timeout:5];node(1);out;'),{signal:ctl.signal});
+      await r.text();res.push(new URL(u).host+'：'+(r.ok?'OK':'http '+r.status)+'（'+Math.round(performance.now()-t0)+'ms）');
+    }catch(err){res.push(new URL(u).host+'：'+errText(err)+'（'+Math.round(performance.now()-t0)+'ms）')}
+    finally{clearTimeout(tm)}
+  }
+  $('limst').textContent=res.join('　／　');b.disabled=false;
+};
 function showLimStat(){
   const t=limStat.t,p2=n=>String(n).padStart(2,'0');
   $('limst').textContent='制限速度のデータ：'+(t?p2(t.getHours())+':'+p2(t.getMinutes())+':'+p2(t.getSeconds())+'に取得、制限つきの道 '+limStat.n+'本':'まだ取得していません')+(limStat.err?'　最後のエラー：'+limStat.err:'');
@@ -564,7 +579,7 @@ function loop(now){
     $('gy').textContent=(-sg.y).toFixed(2);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
-    $('lim').textContent=spdLim!=null?spdLim:roadNoData?'?':(wid!=null&&(limBusy||quickBusy)?'…':'--');
+    $('lim').textContent=spdLim!=null?spdLim:roadNoData?'?':wid==null?'--':limStat.err?'×':(limBusy||quickBusy)?'…':'--';
     $('sp').style.color=overState?css('--peak'):'';
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
