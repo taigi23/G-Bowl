@@ -76,7 +76,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <section id="pl" hidden>
 <canvas id="g" aria-label="Gのグラフ"></canvas>
 <div id="mp" aria-label="走行マップ"></div>
-<p class="mcap">緑の丸＝開始　線の色＝G（青→赤）　ピンチで拡大・縮小</p>
+<p class="mcap">緑の丸＝開始　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="mfol">現在地</button><button id="mall">全体表示</button><button id="clr">軌跡を消す</button></div>
 <h2>保存したログ</h2>
 <div class="btns" style="margin:0 0 6px"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
@@ -91,7 +91,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></div>
 <input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
 <div id="vmw"><div id="vm" aria-label="ログの走行マップ"></div>
-<p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→赤）　ピンチで拡大・縮小</p>
+<p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="vall">全体表示</button></div></div>
 <p class="mcap" id="vnogps" hidden>このログにはGPSの位置がないので、地図は出ません。記録するときは「開始」を押してGPSも動かしてください。</p>
 <canvas id="vg" aria-label="ログのグラフ"></canvas>
@@ -169,7 +169,7 @@ $('start').onclick=async()=>{
 };
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
-$('clr').onclick=()=>{trk=[];if(LM){LM.grp.clearLayers();LM.cur.remove();LM.start.remove()}};
+$('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
 $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if(p)LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))};
 $('mall').onclick=()=>{if(LM)fitAll(LM,trk)};
 // recording and saved logs
@@ -300,21 +300,29 @@ function drawGraph(c,w,pts,full,cur){
   c.fillStyle=mut;c.font='10px system-ui';c.textAlign='left';
   c.fillText(full?'細線：左右・前後　太線：合成G　縦線：再生位置':'過去30秒　細線：左右・前後　太線：合成G　点線：警告ライン',4,11);
 }
-const gcol=m=>'hsl('+(210-210*Math.min(m/.6,1))+',85%,50%)';
+const gcol=m=>'hsl('+(220-220*Math.min(m/.6,1))+',100%,36%)';
 function makeMap(el){
   if(!window.L){el.innerHTML='<div class="mempty">地図を読み込めませんでした。ネットにつながっているか確認して、ページを再読み込みしてください。</div>';return null}
   const map=L.map(el,{preferCanvas:true,zoomControl:true,attributionControl:true}).setView([35.68,139.76],5);
   let te=0;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'})
     .on('tileerror',()=>{if(++te===3)msg('地図の画像を読み込めません。電波の状態を確認してください。')}).addTo(map);
-  const M={map,grp:L.layerGroup().addTo(map),
-    start:L.circleMarker([0,0],{radius:7,color:'#fff',weight:2,fillColor:'#2ecc71',fillOpacity:1}),
-    cur:L.circleMarker([0,0],{radius:8,color:'#fff',weight:3,fillColor:'#1f5eff',fillOpacity:1}),
+  map.createPane('cas').style.zIndex=410;
+  map.createPane('trk').style.zIndex=420;
+  map.createPane('mrk').style.zIndex=430;
+  const M={map,cas:L.layerGroup().addTo(map),grp:L.layerGroup().addTo(map),
+    start:L.circleMarker([0,0],{pane:'mrk',radius:8,color:'#fff',weight:3,fillColor:'#16a34a',fillOpacity:1}),
+    cur:L.circleMarker([0,0],{pane:'mrk',radius:9,color:'#fff',weight:3,fillColor:'#1d4ed8',fillOpacity:1}),
     follow:true};
   map.on('dragstart',()=>{M.follow=false});
   return M;
 }
-function seg(M,a,b){L.polyline([[a.la,a.lo],[b.la,b.lo]],{color:gcol(b.m),weight:5,opacity:.9,lineCap:'round'}).addTo(M.grp)}
+function seg(M,a,b){
+  const ll=[[a.la,a.lo],[b.la,b.lo]];
+  L.polyline(ll,{pane:'cas',color:'#fff',weight:11,opacity:.95,lineCap:'round',lineJoin:'round'}).addTo(M.cas);
+  L.polyline(ll,{pane:'trk',color:gcol(b.m),weight:6,opacity:1,lineCap:'round',lineJoin:'round'}).addTo(M.grp);
+}
+function clearTrack(M){M.cas.clearLayers();M.grp.clearLayers();M.cur.remove();M.start.remove()}
 function fitAll(M,tr){
   if(!tr.length)return;
   if(tr.length===1){M.map.setView([tr[0].la,tr[0].lo],16);return}
@@ -346,7 +354,7 @@ function openL(L){
   if(has&&!VM)VM=makeMap($('vm'));
   size();vseek(0);
   if(has&&VM){
-    VM.grp.clearLayers();VM.cur.remove();VM.start.remove();V.mk=null;
+    clearTrack(VM);V.mk=null;
     for(let i=1;i<tr.length;i++)seg(VM,tr[i-1],tr[i]);
     if(tr.length){VM.start.setLatLng([tr[0].la,tr[0].lo]).addTo(VM.map);fitAll(VM,tr)}
   }
