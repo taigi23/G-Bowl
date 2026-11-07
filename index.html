@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.0.1 (2026-11-07) 制限速度の取得を修正（問い合わせ方式の変更）。道路はあるが制限速度が未登録なら「?」を表示。設定に取得状況を表示
   1.0.0 (2026-11-07) バージョン管理を開始。Gメーター、最大Gの軌跡、ログ記録・再生・CSV、
                      走行マップ、Gに応じた警告音、制限速度の表示と超過通知（マージン0〜50km/h、超過ごとに3回）
 -->
@@ -114,11 +115,13 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
+<p class="mcap" id="limst"></p>
+<p class="mcap">制限の欄：「…」取得中　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
 <p class="mcap" id="ver"></p>
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.0.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.0.1',APP_DATE='2026-11-07';
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -130,7 +133,7 @@ const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
-let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0;
+let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,roadNoData=false,limStat={t:null,n:0,err:''};
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -147,6 +150,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
 $('ver').textContent='バージョン '+APP_VERSION+'（'+APP_DATE+'）';
 $('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
 $('gear').onclick=()=>{
+  showLimStat();
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
@@ -271,7 +275,7 @@ $('impf').onchange=async e=>{
   }catch(err){msg('CSVを読み込めませんでした。')}
 };
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -306,18 +310,18 @@ async function ovp(q,ms){
   for(const u of OVPS){
     const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),ms);
     try{
-      const r=await fetch(u,{method:'POST',body:'data='+encodeURIComponent(q),signal:ctl.signal});
+      const r=await fetch(u+'?data='+encodeURIComponent(q),{signal:ctl.signal});
       if(!r.ok)throw new Error('http '+r.status);
       return await r.json();
     }catch(e){err=e}finally{clearTimeout(tm)}
   }
   throw err;
 }
-function buildWays(j){
+function buildWays(j,all){
   const ways=[];
   (j.elements||[]).forEach(e=>{
     const v=parseLimit(e.tags&&e.tags.maxspeed);
-    if(v==null||!e.geometry||e.geometry.length<2)return;
+    if((v==null&&!all)||!e.geometry||e.geometry.length<2)return;
     let a=90,b=-90,c=180,d=-180;
     e.geometry.forEach(g=>{a=Math.min(a,g.lat);b=Math.max(b,g.lat);c=Math.min(c,g.lon);d=Math.max(d,g.lon)});
     ways.push({id:e.id,lim:v,g:e.geometry,bb:[a,b,c,d]});
@@ -325,7 +329,13 @@ function buildWays(j){
   return ways;
 }
 const covered=(la,lo)=>roads&&dist(roads.la,roads.lo,la,lo)<600;
-function limFail(){if(++limFails===3)msg('制限速度のデータを取得できません。電波の状態を確認してください。')}
+const errText=e=>e&&e.name==='AbortError'?'時間切れ':((e&&e.message)||'通信エラー');
+function limOk(){limFails=0;limStat.t=new Date();limStat.err='';limStat.n=(roads?roads.ways.length:0)+(near?near.ways.filter(w=>w.lim!=null).length:0)}
+function limFail(e){limStat.err=errText(e);if(++limFails===3)msg('制限速度のデータを取得できません（'+limStat.err+'）。電波の状態を確認してください。')}
+function showLimStat(){
+  const t=limStat.t,p2=n=>String(n).padStart(2,'0');
+  $('limst').textContent='制限速度のデータ：'+(t?p2(t.getHours())+':'+p2(t.getMinutes())+':'+p2(t.getSeconds())+'に取得、制限つきの道 '+limStat.n+'本':'まだ取得していません')+(limStat.err?'　最後のエラー：'+limStat.err:'');
+}
 const rematch=()=>{if(gps.lat!=null)matchRoad(gps.lat,gps.lon,lastHdg)};
 function loadRoads(la,lo){
   if(limBusy||covered(la,lo))return;
@@ -334,8 +344,8 @@ function loadRoads(la,lo){
   const dla=1000/110540,dlo=1000/(111320*Math.cos(la*Math.PI/180));
   const bb=[(la-dla).toFixed(5),(lo-dlo).toFixed(5),(la+dla).toFixed(5),(lo+dlo).toFixed(5)].join(',');
   ovp('[out:json][timeout:25];way[highway][maxspeed]('+bb+');out geom;',25000)
-    .then(j=>{roads={la,lo,ways:buildWays(j)};limFails=0;rematch()})
-    .catch(()=>{q.fail=true;limFail()})
+    .then(j=>{roads={la,lo,ways:buildWays(j,false)};limOk();rematch()})
+    .catch(e=>{q.fail=true;limFail(e)})
     .finally(()=>{limBusy=false});
 }
 function quickRoads(la,lo){
@@ -343,14 +353,14 @@ function quickRoads(la,lo){
   const now=Date.now();
   if(near&&(now-near.t<4000||(dist(near.la,near.lo,la,lo)<30&&now-near.t<15000)))return;
   quickBusy=true;
-  ovp('[out:json][timeout:8];way[highway][maxspeed](around:60,'+la.toFixed(6)+','+lo.toFixed(6)+');out geom;',8000)
-    .then(j=>{near={la,lo,t:now,ways:buildWays(j)};limFails=0;rematch()})
-    .catch(()=>{near={la,lo,t:now,ways:near?near.ways:[]};limFail()})
+  ovp('[out:json][timeout:8];way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"](around:40,'+la.toFixed(6)+','+lo.toFixed(6)+');out geom;',8000)
+    .then(j=>{near={la,lo,t:now,ways:buildWays(j,true)};limOk();rematch()})
+    .catch(e=>{near={la,lo,t:now,ways:near?near.ways:[]};limFail(e)})
     .finally(()=>{quickBusy=false});
 }
 function matchRoad(la,lo,hdg){
   const list=(roads&&dist(roads.la,roads.lo,la,lo)<1000?roads.ways:[]).concat(near&&dist(near.la,near.lo,la,lo)<200?near.ways:[]);
-  if(!list.length){if(!limBusy&&!quickBusy)spdLim=null;return}
+  if(!list.length){if(!limBusy&&!quickBusy){spdLim=null;roadNoData=false}return}
   const kx=111320*Math.cos(la*Math.PI/180),ky=110540,pla=60/ky,plo=60/kx;
   let best=null,bc=1e9;
   list.forEach(w=>{
@@ -366,7 +376,7 @@ function matchRoad(la,lo,hdg){
       if(c<bc){bc=c;best=w}
     }
   });
-  curId=best?best.id:null;spdLim=best?best.lim:null;
+  curId=best?best.id:null;spdLim=best?best.lim:null;roadNoData=!!best&&best.lim==null;
 }
 // 超過時に「ピピっ」。1回の超過につき最大3回、4秒間隔
 function pipi(){
@@ -554,7 +564,7 @@ function loop(now){
     $('gy').textContent=(-sg.y).toFixed(2);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
-    $('lim').textContent=spdLim!=null?spdLim:(wid!=null&&(limBusy||quickBusy)?'…':'--');
+    $('lim').textContent=spdLim!=null?spdLim:roadNoData?'?':(wid!=null&&(limBusy||quickBusy)?'…':'--');
     $('sp').style.color=overState?css('--peak'):'';
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
