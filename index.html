@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.1.0 (2026-11-07) 制限速度の取得元を、混雑で応答しない Overpass から Valhalla（FOSSGIS の経路検索サーバー）に変更。直近のGPS軌跡で道を照合
   1.0.3 (2026-11-07) 制限速度のサーバーを変更（overpass.private.coffee を優先、混雑中の overpass-api.de は予備）。つながったサーバーを次回も優先
   1.0.2 (2026-11-07) 設定に制限速度サーバーの接続テストを追加。取得エラー時は制限の欄に「×」を表示
   1.0.1 (2026-11-07) 制限速度の取得を修正（問い合わせ方式の変更）。道路はあるが制限速度が未登録なら「?」を表示。設定に取得状況を表示
@@ -124,7 +125,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.0.3',APP_DATE='2026-11-07';
+const APP_VERSION='1.1.0',APP_DATE='2026-11-07';
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -136,7 +137,7 @@ const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
-let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,roadNoData=false,limStat={t:null,n:0,err:''};
+let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,recent=[],lastVal=null,valBusy=false,roadNoData=false,limStat={t:null,n:0,err:''};
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -278,7 +279,7 @@ $('impf').onchange=async e=>{
   }catch(err){msg('CSVを読み込めませんでした。')}
 };
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -289,10 +290,8 @@ function startGps(){
       const q={la:c.latitude,lo:c.longitude,m:curM};
       trk.push(q);curM=0;if(trk.length>20000)trk.shift();
       if(LM)liveAdd(q,trk[trk.length-2]);
-      lastHdg=(c.heading!=null&&!isNaN(c.heading)&&(c.speed||0)>2)?c.heading:null;
-      loadRoads(c.latitude,c.longitude);
-      quickRoads(c.latitude,c.longitude);
-      matchRoad(c.latitude,c.longitude,lastHdg);
+      pushRecent(c.latitude,c.longitude);
+      queryLimit(c.latitude,c.longitude);
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
 }
@@ -303,98 +302,61 @@ function parseLimit(v){
   let n=+m[1];if(m[2]&&m[2].toLowerCase()==='mph')n=Math.round(n*1.609);
   return n>0&&n<=200?n:null;
 }
-// 制限速度の取得は2段構え
-//  ・すぐ: 現在地の周り60mの道だけを小さく問い合わせる（返事が速い）
-//  ・先回り: 周り約1kmの道をまとめて取得し、GPS更新ごとに手元で照合する（通信なしで即反映）
+// 制限速度: Valhalla（OpenStreetMapのデータを使う経路検索サーバー）に直近のGPS軌跡を送り、
+// 走っている道を照合して、その道の制限速度を受け取る
+const VAL='https://valhalla1.openstreetmap.de/trace_attributes';
 const dist=(a,b,c,d)=>Math.hypot((d-b)*111320*Math.cos(a*Math.PI/180),(c-a)*110540);
-const OVPS=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
-let ovpPref=0;   // 最後につながったサーバーを先に使う
-async function ovp(q,ms){
-  let err;
-  for(let k=0;k<OVPS.length;k++){
-    const i=(ovpPref+k)%OVPS.length,u=OVPS[i];
-    const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),ms);
-    try{
-      const r=await fetch(u+'?data='+encodeURIComponent(q),{signal:ctl.signal});
-      if(!r.ok)throw new Error('http '+r.status);
-      const j=await r.json();ovpPref=i;return j;
-    }catch(e){err=e}finally{clearTimeout(tm)}
-  }
-  throw err;
+async function fetchT(u,opt,ms){
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),ms);
+  try{return await fetch(u,Object.assign({signal:ctl.signal},opt))}finally{clearTimeout(tm)}
 }
-function buildWays(j,all){
-  const ways=[];
-  (j.elements||[]).forEach(e=>{
-    const v=parseLimit(e.tags&&e.tags.maxspeed);
-    if((v==null&&!all)||!e.geometry||e.geometry.length<2)return;
-    let a=90,b=-90,c=180,d=-180;
-    e.geometry.forEach(g=>{a=Math.min(a,g.lat);b=Math.max(b,g.lat);c=Math.min(c,g.lon);d=Math.max(d,g.lon)});
-    ways.push({id:e.id,lim:v,g:e.geometry,bb:[a,b,c,d]});
-  });
-  return ways;
-}
-const covered=(la,lo)=>roads&&dist(roads.la,roads.lo,la,lo)<600;
 const errText=e=>e&&e.name==='AbortError'?'時間切れ':((e&&e.message)||'通信エラー');
-function limOk(){limFails=0;limStat.t=new Date();limStat.err='';limStat.n=(roads?roads.ways.length:0)+(near?near.ways.filter(w=>w.lim!=null).length:0)}
-function limFail(e){limStat.err=errText(e);if(++limFails===3)msg('制限速度のデータを取得できません（'+limStat.err+'）。電波の状態を確認してください。')}
+function pushRecent(la,lo){
+  const p=recent[recent.length-1];
+  if(!p||dist(p.lat,p.lon,la,lo)>=8){recent.push({lat:+la.toFixed(6),lon:+lo.toFixed(6)});if(recent.length>8)recent.shift()}
+}
+async function valTrace(shape){
+  const r=await fetchT(VAL,{method:'POST',body:JSON.stringify({shape,costing:'auto',shape_match:'map_snap'})},8000);
+  if(r.status===400)return {edges:[]};                  // 近くに道が見つからない
+  if(!r.ok)throw new Error('http '+r.status);
+  return r.json();
+}
+function edgeOfLast(j){
+  const es=j.edges||[];if(!es.length)return null;
+  const mp=j.matched_points||[];
+  for(let i=mp.length-1;i>=0;i--)if(mp[i].edge_index!=null&&es[mp[i].edge_index])return es[mp[i].edge_index];
+  return es[es.length-1];
+}
+function queryLimit(la,lo){
+  if(valBusy)return;
+  const now=Date.now();
+  if(lastVal&&now-lastVal.t<(lastVal.fail?15000:3000))return;       // 3秒おき（失敗したら15秒待つ）
+  if(lastVal&&!lastVal.fail&&dist(lastVal.la,lastVal.lo,la,lo)<20)return;  // ほぼ止まっているときは問い合わせない
+  valBusy=true;const q={la,lo,t:now,fail:false};lastVal=q;
+  let shape=recent.slice(-6);
+  if(shape.length<2)shape=[{lat:+(la-0.00002).toFixed(6),lon:+lo.toFixed(6)},{lat:+la.toFixed(6),lon:+lo.toFixed(6)}];
+  valTrace(shape).then(j=>{
+    const e=edgeOfLast(j),v=e&&typeof e.speed_limit==='number'&&e.speed_limit>0&&e.speed_limit<=200?Math.round(e.speed_limit):null;
+    spdLim=v;roadNoData=!!e&&v==null;
+    limFails=0;limStat.t=new Date();limStat.err='';limStat.n++;
+  }).catch(err=>{
+    q.fail=true;limStat.err=errText(err);
+    if(++limFails===3)msg('制限速度のデータを取得できません（'+limStat.err+'）。電波の状態を確認してください。');
+  }).finally(()=>{valBusy=false});
+}
 $('ltest').onclick=async e=>{
-  const b=e.target;b.disabled=true;$('limst').textContent='接続テスト中…（最大20秒）';
-  const res=[];
-  for(const u of OVPS){
-    const t0=performance.now(),ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),10000);
-    try{
-      const r=await fetch(u+'?data='+encodeURIComponent('[out:json][timeout:5];node(1);out;'),{signal:ctl.signal});
-      await r.text();res.push(new URL(u).host+'：'+(r.ok?'OK':'http '+r.status)+'（'+Math.round(performance.now()-t0)+'ms）');
-    }catch(err){res.push(new URL(u).host+'：'+errText(err)+'（'+Math.round(performance.now()-t0)+'ms）')}
-    finally{clearTimeout(tm)}
-  }
-  $('limst').textContent=res.join('　／　');b.disabled=false;
+  const b=e.target;b.disabled=true;$('limst').textContent='接続テスト中…（最大8秒）';
+  const t0=performance.now();
+  try{
+    const j=await valTrace([{lat:35.681236,lon:139.767125},{lat:35.681600,lon:139.767400}]);   // 東京駅前
+    const ed=edgeOfLast(j);
+    $('limst').textContent='valhalla1.openstreetmap.de：OK（'+Math.round(performance.now()-t0)+'ms）'+(ed?'　テスト地点の制限：'+(ed.speed_limit>0?ed.speed_limit+'km/h':'未登録'):'');
+  }catch(err){$('limst').textContent='valhalla1.openstreetmap.de：'+errText(err)+'（'+Math.round(performance.now()-t0)+'ms）'}
+  b.disabled=false;
 };
 function showLimStat(){
   const t=limStat.t,p2=n=>String(n).padStart(2,'0');
-  $('limst').textContent='制限速度のデータ：'+(t?p2(t.getHours())+':'+p2(t.getMinutes())+':'+p2(t.getSeconds())+'に取得、制限つきの道 '+limStat.n+'本':'まだ取得していません')+(limStat.err?'　最後のエラー：'+limStat.err:'');
-}
-const rematch=()=>{if(gps.lat!=null)matchRoad(gps.lat,gps.lon,lastHdg)};
-function loadRoads(la,lo){
-  if(limBusy||covered(la,lo))return;
-  if(lastQ&&lastQ.fail&&Date.now()-lastQ.t<20000)return;
-  limBusy=true;const q={t:Date.now(),fail:false};lastQ=q;
-  const dla=1000/110540,dlo=1000/(111320*Math.cos(la*Math.PI/180));
-  const bb=[(la-dla).toFixed(5),(lo-dlo).toFixed(5),(la+dla).toFixed(5),(lo+dlo).toFixed(5)].join(',');
-  ovp('[out:json][timeout:25];way[highway][maxspeed]('+bb+');out geom;',25000)
-    .then(j=>{roads={la,lo,ways:buildWays(j,false)};limOk();rematch()})
-    .catch(e=>{q.fail=true;limFail(e)})
-    .finally(()=>{limBusy=false});
-}
-function quickRoads(la,lo){
-  if(quickBusy||covered(la,lo))return;
-  const now=Date.now();
-  if(near&&(now-near.t<4000||(dist(near.la,near.lo,la,lo)<30&&now-near.t<15000)))return;
-  quickBusy=true;
-  ovp('[out:json][timeout:8];way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"](around:40,'+la.toFixed(6)+','+lo.toFixed(6)+');out geom;',8000)
-    .then(j=>{near={la,lo,t:now,ways:buildWays(j,true)};limOk();rematch()})
-    .catch(e=>{near={la,lo,t:now,ways:near?near.ways:[]};limFail(e)})
-    .finally(()=>{quickBusy=false});
-}
-function matchRoad(la,lo,hdg){
-  const list=(roads&&dist(roads.la,roads.lo,la,lo)<1000?roads.ways:[]).concat(near&&dist(near.la,near.lo,la,lo)<200?near.ways:[]);
-  if(!list.length){if(!limBusy&&!quickBusy){spdLim=null;roadNoData=false}return}
-  const kx=111320*Math.cos(la*Math.PI/180),ky=110540,pla=60/ky,plo=60/kx;
-  let best=null,bc=1e9;
-  list.forEach(w=>{
-    if(la<w.bb[0]-pla||la>w.bb[1]+pla||lo<w.bb[2]-plo||lo>w.bb[3]+plo)return;
-    for(let i=1;i<w.g.length;i++){
-      const ax=(w.g[i-1].lon-lo)*kx,ay=(w.g[i-1].lat-la)*ky,bx=(w.g[i].lon-lo)*kx,by=(w.g[i].lat-la)*ky;
-      const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;
-      const t=L2?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/L2)):0;
-      const d=Math.hypot(ax+t*dx,ay+t*dy);if(d>40)continue;
-      let c=d;
-      if(hdg!=null&&L2>1)c+=20*Math.abs(Math.sin(Math.atan2(dx,dy)-hdg*Math.PI/180));  // 進行方向に沿う道を優先
-      if(w.id===curId)c-=8;                                                              // 今の道を少し優先してちらつきを防ぐ
-      if(c<bc){bc=c;best=w}
-    }
-  });
-  curId=best?best.id:null;spdLim=best?best.lim:null;roadNoData=!!best&&best.lim==null;
+  $('limst').textContent='制限速度のデータ：'+(t?'最後の取得 '+p2(t.getHours())+':'+p2(t.getMinutes())+':'+p2(t.getSeconds())+'（'+limStat.n+'回成功）':'まだ取得していません')+(limStat.err?'　最後のエラー：'+limStat.err:'');
 }
 // 超過時に「ピピっ」。1回の超過につき最大3回、4秒間隔
 function pipi(){
@@ -582,7 +544,7 @@ function loop(now){
     $('gy').textContent=(-sg.y).toFixed(2);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
-    $('lim').textContent=spdLim!=null?spdLim:roadNoData?'?':wid==null?'--':limStat.err?'×':(limBusy||quickBusy)?'…':'--';
+    $('lim').textContent=spdLim!=null?spdLim:roadNoData?'?':wid==null?'--':limStat.err?'×':(valBusy||!limStat.t)?'…':'--';
     $('sp').style.color=overState?css('--peak'):'';
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
