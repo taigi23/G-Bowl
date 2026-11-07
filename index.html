@@ -14,6 +14,7 @@ h1{font-size:1.1rem;margin:4px 0 12px}
 canvas{display:block;width:100%;background:var(--panel)}
 #c{aspect-ratio:1;border-radius:50%;touch-action:none}
 #g{height:120px;border-radius:10px;margin-top:10px}
+#mp{height:220px;border-radius:10px;margin-top:10px}
 .big{text-align:center;margin:12px 0 4px;font-variant-numeric:tabular-nums}
 .big b{font-size:3.4rem;letter-spacing:-.02em}
 .big span{color:var(--mut);margin-left:4px}
@@ -25,7 +26,9 @@ canvas{display:block;width:100%;background:var(--panel)}
 button,select{font:inherit;font-size:.85rem;padding:9px 12px;border-radius:10px;border:1px solid var(--ring);background:var(--panel);color:var(--fg)}
 button.p{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
 button.on{border-color:var(--peak);color:var(--peak)}
-button:focus-visible,select:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
+label.fc{flex-basis:100%;font-size:.85rem;display:flex;align-items:center;gap:8px}
+label.fc input{flex:1}
 #msg{color:var(--mut);font-size:.85rem;min-height:2.4em;margin:10px 0 0}
 </style>
 </head>
@@ -41,6 +44,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--ball);outline-
 <div><small>km/h</small><strong id="sp">--</strong></div>
 </div>
 <canvas id="g" aria-label="Gのグラフ"></canvas>
+<canvas id="mp" aria-label="走行マップ"></canvas>
 <div class="btns">
 <button class="p" id="start">センサー開始</button>
 <button id="cal">0点合わせ</button>
@@ -49,20 +53,23 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--ball);outline-
 <button id="snd" class="on">警告音 オン</button>
 <select id="thr" aria-label="警告のしきい値"><option value="0.3">0.3G</option><option value="0.5" selected>0.5G</option><option value="0.7">0.7G</option><option value="1">1.0G</option></select>
 <button id="gps">GPS開始</button>
+<button id="clr">軌跡を消す</button>
 <button id="rst">最大値を消す</button>
 <button id="fx">左右反転</button>
 <button id="fy">前後反転</button>
+<label class="fc">ローパス <input type="range" id="fc" min="0.5" max="20" step="0.5" value="5" aria-label="カットオフ周波数"> <b><span id="fcv">5</span> Hz</b></label>
 </div>
 <p id="msg">「センサー開始」を押すと、傾きや加減速でボールが動きます。ボールをドラッグしても試せます。</p>
 </main>
 <script>
-const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
+const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d'),mp=$('mp'),mpc=mp.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const NICE=[.4,.8,1.2,2,4,8];
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},sx=ios?1:-1,sy=ios?-1:1,peak=0,trail=[],sensor=false,drag=null;
-let env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0,gps={sp:null,lat:null,lon:null},wid=null,ac=null,soundOn=true,lastBeep=0,thr=.5;
+let S=.4,fcut=5,curM=0,lastT=0,trk=[],org=null,mapDirty=true,env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0,gps={sp:null,lat:null,lon:null},wid=null,ac=null,soundOn=true,lastBeep=0,thr=.5;
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const d=devicePixelRatio||1,w=c.clientWidth,hh=h||w;c.width=Math.round(w*d);c.height=Math.round(hh*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,120)}
+function size(){fit(cv);fit(gc,120);fit(mp,220);mapDirty=true}
 addEventListener('resize',size);size();
 function onMotion(e){
   const a=e.accelerationIncludingGravity;
@@ -87,8 +94,10 @@ const calibrate=()=>{off={x:sx*raw.x,y:sy*raw.y}};
 $('start').onclick=start;
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
+$('clr').onclick=()=>{trk=[];org=null;mapDirty=true};
 $('fx').onclick=()=>{sx=-sx;calibrate()};
 $('fy').onclick=()=>{sy=-sy;calibrate()};
+$('fc').oninput=e=>{fcut=+e.target.value;$('fcv').textContent=fcut};
 $('thr').onchange=e=>{thr=+e.target.value};
 $('snd').onclick=e=>{soundOn=!soundOn;e.target.textContent='警告音 '+(soundOn?'オン':'オフ');e.target.classList.toggle('on',soundOn)};
 $('rec').onclick=e=>{
@@ -108,7 +117,15 @@ $('csv').onclick=()=>{
 $('gps').onclick=e=>{
   if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null;gps={sp:null,lat:null,lon:null};e.target.textContent='GPS開始';e.target.classList.remove('on');return}
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
-  wid=navigator.geolocation.watchPosition(p=>{const s=p.coords.speed;gps={sp:s==null?null:s*3.6,lat:p.coords.latitude,lon:p.coords.longitude}},()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
+  wid=navigator.geolocation.watchPosition(p=>{
+    const c=p.coords;
+    gps={sp:c.speed==null?null:c.speed*3.6,lat:c.latitude,lon:c.longitude};
+    if(c.accuracy<=100){
+      if(!org)org={la:c.latitude,lo:c.longitude};
+      trk.push({x:(c.longitude-org.lo)*111320*Math.cos(org.la*Math.PI/180),y:(c.latitude-org.la)*110540,m:curM});
+      curM=0;if(trk.length>5000)trk.shift();mapDirty=true;
+    }
+  },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
   e.target.textContent='GPS停止';e.target.classList.add('on');
 };
 function beep(){
@@ -122,25 +139,26 @@ cv.addEventListener('pointermove',e=>{if(drag)drag=pt(e)});
 ['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{drag=null}));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function draw(){
-  const w=cv.clientWidth,R=w/2,k=R*.94,ring=css('--ring'),ball=css('--ball'),pc=css('--peak');
+  const w=cv.clientWidth,R=w/2,k=R*.94,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
   ctx.clearRect(0,0,w,w);
-  ctx.strokeStyle=ring;ctx.lineWidth=1;
+  ctx.strokeStyle=ring;ctx.lineWidth=1.4;ctx.globalAlpha=.55;
   for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(R,R,k*i/4,0,7);ctx.stroke()}
   ctx.beginPath();ctx.moveTo(R,R*.06);ctx.lineTo(R,w-R*.06);ctx.moveTo(R*.06,R);ctx.lineTo(w-R*.06,R);ctx.stroke();
-  ctx.fillStyle=ring;ctx.font='11px system-ui';ctx.textAlign='left';
-  [.25,.5,.75,1].forEach(g=>ctx.fillText(g+'G',R+4,R-k*g-3));
+  ctx.globalAlpha=.9;ctx.fillStyle=ring;ctx.font='11px system-ui';ctx.textAlign='left';
+  [.25,.5,.75,1].forEach(g=>ctx.fillText(+(S*g).toFixed(2)+'G',R+4,R-k*g-3));
+  ctx.globalAlpha=1;
   if(peak>.02){
     ctx.beginPath();
-    env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
+    env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v/S,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
     ctx.closePath();ctx.globalAlpha=.14;ctx.fillStyle=pc;ctx.fill();ctx.globalAlpha=1;
     ctx.strokeStyle=pc;ctx.lineWidth=2;ctx.stroke();
-    const bi=env.indexOf(Math.max(...env)),ba=bi/72*2*Math.PI-Math.PI,br=Math.min(env[bi],1)*k+14;
+    const bi=env.indexOf(Math.max(...env)),ba=bi/72*2*Math.PI-Math.PI,br=Math.min(env[bi]/S,1)*k+14;
     ctx.fillStyle=pc;ctx.textAlign='center';
     ctx.fillText('最大 '+peak.toFixed(2)+'G',Math.max(34,Math.min(w-34,R+Math.cos(ba)*br)),Math.max(12,Math.min(w-6,R+Math.sin(ba)*br)));
   }
-  trail.forEach((p,i)=>{ctx.globalAlpha=i/trail.length*.35;ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+p.x*k,R+p.y*k,R*.025,0,7);ctx.fill()});
+  trail.forEach((p,i)=>{ctx.globalAlpha=i/trail.length*.35;ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+p.x/S*k,R+p.y/S*k,R*.025,0,7);ctx.fill()});
   ctx.globalAlpha=1;
-  let bx=sg.x,by=sg.y,l=Math.hypot(bx,by);
+  let bx=sg.x/S,by=sg.y/S,l=Math.hypot(bx,by);
   if(l>1){bx/=l;by/=l}
   ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+bx*k,R+by*k,R*.07,0,7);ctx.fill();
 }
@@ -158,16 +176,41 @@ function graph(){
   line('x',mut,1);line('y',mut,1);line('m',ball,2);
   gx.fillStyle=mut;gx.font='10px system-ui';gx.textAlign='left';gx.fillText('過去30秒　細線：左右・前後　太線：合成G　点線：警告ライン',4,11);
 }
+function map(){
+  const w=mp.clientWidth,h=220,c=mpc,fg=css('--fg'),mut=css('--mut');
+  c.clearRect(0,0,w,h);c.font='12px system-ui';c.fillStyle=mut;
+  if(!trk.length){c.textAlign='center';c.fillText('「GPS開始」で走行軌跡を表示します',w/2,h/2);return}
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  trk.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
+  const pad=28,s=Math.min((w-2*pad)/Math.max(x1-x0,30),(h-2*pad)/Math.max(y1-y0,30)),cx=(x0+x1)/2,cy=(y0+y1)/2;
+  const X=p=>w/2+(p.x-cx)*s,Y=p=>h/2-(p.y-cy)*s;
+  c.lineWidth=4;c.lineCap='round';c.lineJoin='round';
+  for(let i=1;i<trk.length;i++){
+    c.strokeStyle='hsl('+(210-210*Math.min(trk[i].m/.6,1))+',85%,55%)';
+    c.beginPath();c.moveTo(X(trk[i-1]),Y(trk[i-1]));c.lineTo(X(trk[i]),Y(trk[i]));c.stroke();
+  }
+  const dot=(p,col)=>{c.fillStyle=col;c.beginPath();c.arc(X(p),Y(p),6,0,7);c.fill();c.strokeStyle=fg;c.lineWidth=2;c.stroke()};
+  dot(trk[0],'#2ecc71');dot(trk[trk.length-1],css('--ball'));
+  const len=[10,20,50,100,200,500,1000,2000,5000,10000].filter(v=>v*s<=w/3).pop()||10;
+  c.strokeStyle=fg;c.lineWidth=2;c.beginPath();c.moveTo(12,h-14);c.lineTo(12+len*s,h-14);c.stroke();
+  c.fillStyle=fg;c.textAlign='left';c.fillText(len>=1000?len/1000+'km':len+'m',12,h-20);
+  c.fillStyle=mut;c.fillText('緑＝開始　色＝G（青→赤）',8,16);
+  c.fillStyle=fg;c.textAlign='right';c.fillText('N↑',w-10,16);
+}
 function loop(now){
   let tx=0,ty=0;
-  if(drag){tx=drag.x;ty=drag.y}
+  if(drag){tx=drag.x*S*.95;ty=drag.y*S*.95}
   else if(sensor){tx=sx*raw.x-off.x;ty=sy*raw.y-off.y}
-  sg.x+=(tx-sg.x)*.2;sg.y+=(ty-sg.y)*.2;
+  const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
+  const al=dt/(1/(2*Math.PI*fcut)+dt);
+  sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;
   const m=Math.hypot(sg.x,sg.y);
   if(m>peak)peak=m;
+  curM=Math.max(curM,m);
+  S=NICE.find(v=>v>=Math.max(peak*1.05,.3))||8;
   if(m>.02){const a=Math.atan2(sg.y,sg.x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>env[i])env[i]=v}}
   if(m>thr)beep();
-  trail.push({x:Math.max(-1,Math.min(1,sg.x)),y:Math.max(-1,Math.min(1,sg.y))});
+  trail.push({x:sg.x,y:sg.y});
   if(trail.length>40)trail.shift();
   if(now-lastS>=100){
     lastS=now;
@@ -180,6 +223,7 @@ function loop(now){
   $('pk').textContent=peak.toFixed(2);
   $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
   draw();graph();
+  if(mapDirty){map();mapDirty=false}
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
