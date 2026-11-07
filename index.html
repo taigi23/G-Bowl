@@ -101,7 +101,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>警告音</span><span><select id="thr" aria-label="警告のしきい値"><option value="0.3">0.3G</option><option value="0.5">0.5G</option><option value="0.7">0.7G</option><option value="1">1.0G</option></select> <input type="checkbox" id="snd" aria-label="警告音"></span></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
-<div class="set"><span>ローパス <b><span id="fcv">5</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
+<div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
@@ -109,13 +109,13 @@ const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:5,thr:.5,snd:true,fx:false,fy:false,v:3};
+let cfg={fc:2,thr:.5,snd:true,fx:false,fy:false,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
-try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==3){st.fy=false;st.v=3}Object.assign(cfg,st);saveCfg()}catch(e){}
+try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
-let gps={sp:null,lat:null,lon:null},wid=null,ac=null,lastBeep=0,V=null,saved=[];
+let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -130,7 +130,10 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
 });
 // settings
 $('snd').checked=cfg.snd;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
-$('gear').onclick=()=>{const d=$('st');d.showModal?d.showModal():d.setAttribute('open','')};
+$('gear').onclick=()=>{
+  const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
+  const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
+};
 $('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
 $('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
 $('thr').onchange=e=>{cfg.thr=+e.target.value;saveCfg()};
@@ -160,7 +163,7 @@ function onMotion(e){
 let running=false,wl=null;
 async function start(){
   try{
-    ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();ensureTone();
     if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
       const r=await DeviceMotionEvent.requestPermission();
       if(r!=='granted'){msg('モーションセンサーの許可が必要です。');return false}
@@ -264,10 +267,18 @@ function startGps(){
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
 }
-function beep(){
-  if(!ac||!cfg.snd)return;const n=performance.now();if(n-lastBeep<500)return;lastBeep=n;
-  const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=880;g.gain.value=.15;
-  o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+.12);
+// 連続音: Gが大きくなるほど音量が上がる（しきい値から +1G で最大）
+let tone=null;
+function ensureTone(){
+  if(!ac||tone)return;
+  const o=ac.createOscillator(),g=ac.createGain();
+  o.type='sine';o.frequency.value=660;g.gain.value=0;
+  o.connect(g);g.connect(ac.destination);o.start();tone={o,g};
+}
+function setVol(m){
+  if(!tone)return;
+  const v=cfg.snd?Math.min(1,Math.max(0,(m-cfg.thr)/1)):0;
+  tone.g.gain.setTargetAtTime(v*.4,ac.currentTime,.08);
 }
 // drawing
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -410,7 +421,7 @@ function loop(now){
   curM=Math.max(curM,m);
   S=nice(peak);
   if(m>.02)envAdd(env,sg.x,sg.y,m);
-  if(m>cfg.thr)beep();
+  setVol(m);
   trail.push({x:sg.x,y:sg.y});
   if(trail.length>40)trail.shift();
   if(now-lastS>=100){
