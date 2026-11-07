@@ -8,13 +8,17 @@
 :root{--bg:#eef1f3;--fg:#12202e;--mut:#5f6f7e;--ring:#b8c2cb;--ball:#1f5eff;--peak:#e5484d;--panel:#fff;--btn:#12202e;--btnfg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a24;--fg:#e6edf3;--mut:#8ea0b1;--ring:#2c3d4d;--ball:#ffb020;--peak:#ff6b6b;--panel:#16232f;--btn:#e6edf3;--btnfg:#0f1a24}}
 :root[data-theme="dark"]{--bg:#0f1a24;--fg:#e6edf3;--mut:#8ea0b1;--ring:#2c3d4d;--ball:#ffb020;--peak:#ff6b6b;--panel:#16232f;--btn:#e6edf3;--btnfg:#0f1a24}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",system-ui,sans-serif}
-main{max-width:460px;margin:0 auto;padding:16px 16px 28px}
-h1{font-size:1.1rem;margin:4px 0 12px}
+header{display:flex;justify-content:space-between;align-items:center;max-width:460px;margin:0 auto;padding:10px 16px 0}
+nav{display:flex;gap:6px}
+.in,main{max-width:460px;margin:0 auto;padding:12px 16px 28px}
+h2{font-size:.95rem;margin:18px 0 6px}
 canvas{display:block;width:100%;background:var(--panel)}
-#c{aspect-ratio:1;border-radius:50%;touch-action:none}
-#g{height:120px;border-radius:10px;margin-top:10px}
-#mp{height:220px;border-radius:10px;margin-top:10px}
+#c,#vc{aspect-ratio:1;border-radius:50%;touch-action:none}
+#vc{width:min(100%,320px);margin:8px auto}
+#g,#vg{height:120px;border-radius:10px;margin-top:10px}
+#mp,#vm{height:220px;border-radius:10px;margin-top:10px}
 .big{text-align:center;margin:12px 0 4px;font-variant-numeric:tabular-nums}
 .big b{font-size:3.4rem;letter-spacing:-.02em}
 .big span{color:var(--mut);margin-left:4px}
@@ -24,17 +28,31 @@ canvas{display:block;width:100%;background:var(--panel)}
 .row strong{font-size:1rem}
 .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 button,select{font:inherit;font-size:.85rem;padding:9px 12px;border-radius:10px;border:1px solid var(--ring);background:var(--panel);color:var(--fg)}
-button.p{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
+button.p,.tab.on{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
 button.on{border-color:var(--peak);color:var(--peak)}
+.tab{border-radius:20px}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
-label.fc{flex-basis:100%;font-size:.85rem;display:flex;align-items:center;gap:8px}
-label.fc input{flex:1}
 #msg{color:var(--mut);font-size:.85rem;min-height:2.4em;margin:10px 0 0}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--panel);border-radius:10px;padding:10px 12px;margin:6px 0}
+li small{display:block;color:var(--mut)}
+#vw{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5;padding-top:env(safe-area-inset-top,0px)}
+#vr{text-align:center;font-variant-numeric:tabular-nums;margin:4px 0}
+input[type=range]{width:100%}
+dialog{border:1px solid var(--ring);border-radius:16px;background:var(--panel);color:var(--fg);width:min(92vw,420px);padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.set{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--ring)}
+.set input[type=checkbox]{width:22px;height:22px}
+.set input[type=range]{width:45%}
 </style>
 </head>
 <body>
+<header>
+<nav><button class="tab on" data-t="m">メーター</button><button class="tab" data-t="l">ログ</button></nav>
+<button id="gear" aria-label="設定">⚙ 設定</button>
+</header>
 <main>
-<h1>Gメーター</h1>
+<section id="pm">
 <canvas id="c" aria-label="Gボール"></canvas>
 <div class="big"><b id="mag">0.00</b><span>G</span></div>
 <div class="row">
@@ -43,34 +61,71 @@ label.fc input{flex:1}
 <div><small>最大G</small><strong id="pk">0.00</strong></div>
 <div><small>km/h</small><strong id="sp">--</strong></div>
 </div>
-<canvas id="g" aria-label="Gのグラフ"></canvas>
-<canvas id="mp" aria-label="走行マップ"></canvas>
 <div class="btns">
 <button class="p" id="start">センサー開始</button>
 <button id="cal">0点合わせ</button>
 <button id="rec">記録開始</button>
-<button id="csv">CSV保存</button>
-<button id="snd" class="on">警告音 オン</button>
-<select id="thr" aria-label="警告のしきい値"><option value="0.3">0.3G</option><option value="0.5" selected>0.5G</option><option value="0.7">0.7G</option><option value="1">1.0G</option></select>
 <button id="gps">GPS開始</button>
-<button id="clr">軌跡を消す</button>
 <button id="rst">最大値を消す</button>
-<button id="fx">左右反転</button>
-<button id="fy">前後反転</button>
-<label class="fc">ローパス <input type="range" id="fc" min="0.5" max="20" step="0.5" value="5" aria-label="カットオフ周波数"> <b><span id="fcv">5</span> Hz</b></label>
 </div>
+</section>
+<section id="pl" hidden>
+<canvas id="g" aria-label="Gのグラフ"></canvas>
+<canvas id="mp" aria-label="走行マップ"></canvas>
+<div class="btns"><button id="clr">軌跡を消す</button></div>
+<h2>保存したログ</h2>
+<ul id="list"></ul>
+</section>
 <p id="msg">「センサー開始」を押すと、傾きや加減速でボールが動きます。ボールをドラッグしても試せます。</p>
 </main>
+<div id="vw" hidden><div class="in">
+<div class="btns" style="align-items:center"><button id="vx">← 戻る</button><b id="vn"></b></div>
+<canvas id="vc" aria-label="再生中のGボール"></canvas>
+<p id="vr"></p>
+<div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></div>
+<input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
+<canvas id="vg" aria-label="ログのグラフ"></canvas>
+<canvas id="vm" aria-label="ログの走行マップ"></canvas>
+</div></div>
+<dialog id="st">
+<h2 style="margin-top:0">設定</h2>
+<div class="set"><span>警告音</span><span><select id="thr" aria-label="警告のしきい値"><option value="0.3">0.3G</option><option value="0.5">0.5G</option><option value="0.7">0.7G</option><option value="1">1.0G</option></select> <input type="checkbox" id="snd" aria-label="警告音"></span></div>
+<div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
+<div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
+<div class="set"><span>ローパス <b><span id="fcv">5</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
+<div class="btns"><button class="p" id="stx">閉じる</button></div>
+</dialog>
 <script>
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d'),mp=$('mp'),mpc=mp.getContext('2d');
+const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d'),vm=$('vm'),vmx=vm.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-const NICE=[.4,.8,1.2,2,4,8];
-let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},sx=ios?1:-1,sy=ios?-1:1,peak=0,trail=[],sensor=false,drag=null;
-let S=.4,fcut=5,curM=0,lastT=0,trk=[],org=null,mapDirty=true,env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0,gps={sp:null,lat:null,lon:null},wid=null,ac=null,soundOn=true,lastBeep=0,thr=.5;
+const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
+let cfg={fc:5,thr:.5,snd:true,fx:false,fy:false};
+try{Object.assign(cfg,JSON.parse(localStorage.getItem('gm-set')||'{}'))}catch(e){}
+const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
+const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
+let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,drag=null,S=.4;
+let curM=0,lastT=0,trk=[],org=null,mapDirty=true,env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
+let gps={sp:null,lat:null,lon:null},wid=null,ac=null,lastBeep=0,V=null,saved=[];
+try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
-function fit(c,h){const d=devicePixelRatio||1,w=c.clientWidth,hh=h||w;c.width=Math.round(w*d);c.height=Math.round(hh*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,120);fit(mp,220);mapDirty=true}
+function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
+function size(){fit(cv);fit(gc,120);fit(mp,220);fit(vc);fit(vg,120);fit(vm,220);mapDirty=true}
 addEventListener('resize',size);size();
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
+  $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';size();
+});
+// settings
+$('snd').checked=cfg.snd;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
+$('gear').onclick=()=>{const d=$('st');d.showModal?d.showModal():d.setAttribute('open','')};
+$('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
+$('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
+$('thr').onchange=e=>{cfg.thr=+e.target.value;saveCfg()};
+$('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate()};
+$('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate()};
+$('fc').oninput=e=>{cfg.fc=+e.target.value;$('fcv').textContent=cfg.fc;saveCfg()};
+// sensor
 function onMotion(e){
   const a=e.accelerationIncludingGravity;
   if(!a||a.x==null||a.y==null)return;
@@ -90,30 +145,37 @@ async function start(){
     setTimeout(()=>{if(!sensor)msg('センサーの値を取得できません。ボールのドラッグで試せます。')},1600);
   }catch(e){msg('センサーを開始できませんでした。')}
 }
-const calibrate=()=>{off={x:sx*raw.x,y:sy*raw.y}};
+const calibrate=()=>{off={x:sxv()*raw.x,y:syv()*raw.y}};
 $('start').onclick=start;
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
 $('clr').onclick=()=>{trk=[];org=null;mapDirty=true};
-$('fx').onclick=()=>{sx=-sx;calibrate()};
-$('fy').onclick=()=>{sy=-sy;calibrate()};
-$('fc').oninput=e=>{fcut=+e.target.value;$('fcv').textContent=fcut};
-$('thr').onchange=e=>{thr=+e.target.value};
-$('snd').onclick=e=>{soundOn=!soundOn;e.target.textContent='警告音 '+(soundOn?'オン':'オフ');e.target.classList.toggle('on',soundOn)};
+// recording and saved logs
+const persist=()=>{try{localStorage.setItem('gm-logs',JSON.stringify(saved));return true}catch(e){return false}};
+function saveLog(){
+  const q=(v,d)=>v==null?null:+v.toFixed(d);
+  const rows=log.map(r=>[q(r[0],1),q(r[1],3),q(r[2],3),q(r[3],3),q(r[4],1),q(r[5],6),q(r[6],6)]);
+  const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  saved.unshift({id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+Math.max(...rows.map(r=>r[3])).toFixed(2),gps:rows.some(r=>r[5]!=null),rows});
+  if(!persist()){saved.shift();msg('保存できませんでした（容量がいっぱいです）。古いログを削除してください。');return}
+  renderList();msg('ログを保存しました（'+rows.length+'件）。「ログ」タブから再生できます。');
+}
 $('rec').onclick=e=>{
-  rec=!rec;e.target.classList.toggle('on',rec);
-  if(rec){log=[];t0=performance.now();e.target.textContent='記録停止';msg('記録中です（1秒に10回）。')}
-  else{e.target.textContent='記録開始';msg('記録を止めました（'+log.length+'件）。「CSV保存」で保存できます。')}
+  if(!rec){rec=true;log=[];t0=performance.now();e.target.textContent='記録停止';e.target.classList.add('on');msg('記録中です（1秒に10回）。');return}
+  rec=false;e.target.textContent='記録開始';e.target.classList.remove('on');
+  if(!log.length){msg('記録が空でした。');return}
+  if(confirm('記録を保存しますか？\n'+log.length+'件（約'+Math.round(log[log.length-1][0])+'秒）'))saveLog();else msg('記録を破棄しました。');
 };
-$('csv').onclick=()=>{
-  if(!log.length){msg('保存するログがありません。先に「記録開始」を押してください。');return}
-  const f=v=>v==null?'':(typeof v==='number'?+v.toFixed(5):v);
-  const t='秒,左右G,前後G,合成G,km/h,緯度,経度\n'+log.map(r=>r.map(f).join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob(['\ufeff'+t],{type:'text/csv'}));
-  a.download='gmeter-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.csv';
-  document.body.appendChild(a);a.click();a.remove();
+function renderList(){
+  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
+}
+$('list').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.a==='p')openV(b.dataset.id);
+  else if(confirm('このログを削除しますか？')){saved=saved.filter(s=>s.id!=b.dataset.id);persist();renderList()}
 };
+renderList();
+// gps
 $('gps').onclick=e=>{
   if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null;gps={sp:null,lat:null,lon:null};e.target.textContent='GPS開始';e.target.classList.remove('on');return}
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -129,7 +191,7 @@ $('gps').onclick=e=>{
   e.target.textContent='GPS停止';e.target.classList.add('on');
 };
 function beep(){
-  if(!ac||!soundOn)return;const n=performance.now();if(n-lastBeep<500)return;lastBeep=n;
+  if(!ac||!cfg.snd)return;const n=performance.now();if(n-lastBeep<500)return;lastBeep=n;
   const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=880;g.gain.value=.15;
   o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+.12);
 }
@@ -137,79 +199,128 @@ function pt(e){const r=cv.getBoundingClientRect(),R=r.width/2;return{x:(e.client
 cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);drag=pt(e)});
 cv.addEventListener('pointermove',e=>{if(drag)drag=pt(e)});
 ['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{drag=null}));
+// drawing
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-function draw(){
-  const w=cv.clientWidth,R=w/2,k=R*.94,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
-  ctx.clearRect(0,0,w,w);
-  ctx.strokeStyle=ring;ctx.lineWidth=1.4;ctx.globalAlpha=.55;
-  for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(R,R,k*i/4,0,7);ctx.stroke()}
-  ctx.beginPath();ctx.moveTo(R,R*.06);ctx.lineTo(R,w-R*.06);ctx.moveTo(R*.06,R);ctx.lineTo(w-R*.06,R);ctx.stroke();
-  ctx.globalAlpha=.9;ctx.fillStyle=ring;ctx.font='11px system-ui';ctx.textAlign='left';
-  [.25,.5,.75,1].forEach(g=>ctx.fillText(+(S*g).toFixed(2)+'G',R+4,R-k*g-3));
-  ctx.globalAlpha=1;
-  if(peak>.02){
-    ctx.beginPath();
-    env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v/S,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
-    ctx.closePath();ctx.globalAlpha=.14;ctx.fillStyle=pc;ctx.fill();ctx.globalAlpha=1;
-    ctx.strokeStyle=pc;ctx.lineWidth=2;ctx.stroke();
-    const bi=env.indexOf(Math.max(...env)),ba=bi/72*2*Math.PI-Math.PI,br=Math.min(env[bi]/S,1)*k+14;
-    ctx.fillStyle=pc;ctx.textAlign='center';
-    ctx.fillText('最大 '+peak.toFixed(2)+'G',Math.max(34,Math.min(w-34,R+Math.cos(ba)*br)),Math.max(12,Math.min(w-6,R+Math.sin(ba)*br)));
+function envAdd(en,x,y,m){const a=Math.atan2(y,x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>en[i])en[i]=v}}
+function drawBall(cvs,c,sc){
+  const w=cvs.clientWidth;if(!w)return;
+  const R=w/2,k=R*.94,S=sc.S,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
+  c.clearRect(0,0,w,w);
+  c.strokeStyle=ring;c.lineWidth=1.4;c.globalAlpha=.55;
+  for(let i=1;i<=4;i++){c.beginPath();c.arc(R,R,k*i/4,0,7);c.stroke()}
+  c.beginPath();c.moveTo(R,R*.06);c.lineTo(R,w-R*.06);c.moveTo(R*.06,R);c.lineTo(w-R*.06,R);c.stroke();
+  c.globalAlpha=.9;c.fillStyle=ring;c.font='11px system-ui';c.textAlign='left';
+  [.25,.5,.75,1].forEach(g=>c.fillText(+(S*g).toFixed(2)+'G',R+4,R-k*g-3));
+  c.globalAlpha=1;
+  if(sc.peak>.02){
+    c.beginPath();
+    sc.env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v/S,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?c.lineTo(X,Y):c.moveTo(X,Y)});
+    c.closePath();c.globalAlpha=.14;c.fillStyle=pc;c.fill();c.globalAlpha=1;
+    c.strokeStyle=pc;c.lineWidth=2;c.stroke();
+    const bi=sc.env.indexOf(Math.max(...sc.env)),ba=bi/72*2*Math.PI-Math.PI,br=Math.min(sc.env[bi]/S,1)*k+14;
+    c.fillStyle=pc;c.textAlign='center';
+    c.fillText('最大 '+sc.peak.toFixed(2)+'G',Math.max(34,Math.min(w-34,R+Math.cos(ba)*br)),Math.max(12,Math.min(w-6,R+Math.sin(ba)*br)));
   }
-  trail.forEach((p,i)=>{ctx.globalAlpha=i/trail.length*.35;ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+p.x/S*k,R+p.y/S*k,R*.025,0,7);ctx.fill()});
-  ctx.globalAlpha=1;
-  let bx=sg.x/S,by=sg.y/S,l=Math.hypot(bx,by);
+  sc.trail.forEach((p,i)=>{c.globalAlpha=i/sc.trail.length*.35;c.fillStyle=ball;c.beginPath();c.arc(R+p.x/S*k,R+p.y/S*k,R*.025,0,7);c.fill()});
+  c.globalAlpha=1;
+  let bx=sc.x/S,by=sc.y/S,l=Math.hypot(bx,by);
   if(l>1){bx/=l;by/=l}
-  ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+bx*k,R+by*k,R*.07,0,7);ctx.fill();
+  c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,R*.07,0,7);c.fill();
 }
-function graph(){
-  const w=gc.clientWidth,h=120,y0=h/2,sc=y0/1.2,ring=css('--ring'),mut=css('--mut'),ball=css('--ball');
-  gx.clearRect(0,0,w,h);
-  gx.strokeStyle=ring;gx.lineWidth=1;
-  gx.beginPath();gx.moveTo(0,y0);gx.lineTo(w,y0);gx.stroke();
-  gx.setLineDash([4,4]);gx.beginPath();gx.moveTo(0,y0-thr*sc);gx.lineTo(w,y0-thr*sc);gx.stroke();gx.setLineDash([]);
-  const line=(key,col,lw)=>{
-    gx.strokeStyle=col;gx.lineWidth=lw;gx.beginPath();
-    hist.forEach((p,i)=>{const X=w-(hist.length-1-i)/(N-1)*w,Y=y0-p[key]*sc;i?gx.lineTo(X,Y):gx.moveTo(X,Y)});
-    gx.stroke();
-  };
+function drawGraph(c,w,pts,full,cur){
+  const h=120,y0=h/2,sc=y0/1.2,ring=css('--ring'),mut=css('--mut'),ball=css('--ball'),n=pts.length;
+  c.clearRect(0,0,w,h);c.strokeStyle=ring;c.lineWidth=1;
+  c.beginPath();c.moveTo(0,y0);c.lineTo(w,y0);c.stroke();
+  c.setLineDash([4,4]);c.beginPath();c.moveTo(0,y0-cfg.thr*sc);c.lineTo(w,y0-cfg.thr*sc);c.stroke();c.setLineDash([]);
+  const px=i=>full?i/Math.max(n-1,1)*w:w-(n-1-i)/(N-1)*w;
+  const line=(k,col,lw)=>{c.strokeStyle=col;c.lineWidth=lw;c.beginPath();pts.forEach((p,i)=>{const Y=y0-p[k]*sc;i?c.lineTo(px(i),Y):c.moveTo(px(i),Y)});c.stroke()};
   line('x',mut,1);line('y',mut,1);line('m',ball,2);
-  gx.fillStyle=mut;gx.font='10px system-ui';gx.textAlign='left';gx.fillText('過去30秒　細線：左右・前後　太線：合成G　点線：警告ライン',4,11);
+  if(full&&cur!=null){c.strokeStyle=css('--fg');c.lineWidth=1.5;c.beginPath();c.moveTo(px(cur),0);c.lineTo(px(cur),h);c.stroke()}
+  c.fillStyle=mut;c.font='10px system-ui';c.textAlign='left';
+  c.fillText(full?'細線：左右・前後　太線：合成G　縦線：再生位置':'過去30秒　細線：左右・前後　太線：合成G　点線：警告ライン',4,11);
 }
-function map(){
-  const w=mp.clientWidth,h=220,c=mpc,fg=css('--fg'),mut=css('--mut');
+function drawMap(c,w,tr,cur){
+  const h=220,fg=css('--fg'),mut=css('--mut');
   c.clearRect(0,0,w,h);c.font='12px system-ui';c.fillStyle=mut;
-  if(!trk.length){c.textAlign='center';c.fillText('「GPS開始」で走行軌跡を表示します',w/2,h/2);return}
+  if(!tr.length){c.textAlign='center';c.fillText('GPSの軌跡がありません',w/2,h/2);return}
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
-  trk.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
+  tr.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
   const pad=28,s=Math.min((w-2*pad)/Math.max(x1-x0,30),(h-2*pad)/Math.max(y1-y0,30)),cx=(x0+x1)/2,cy=(y0+y1)/2;
   const X=p=>w/2+(p.x-cx)*s,Y=p=>h/2-(p.y-cy)*s;
   c.lineWidth=4;c.lineCap='round';c.lineJoin='round';
-  for(let i=1;i<trk.length;i++){
-    c.strokeStyle='hsl('+(210-210*Math.min(trk[i].m/.6,1))+',85%,55%)';
-    c.beginPath();c.moveTo(X(trk[i-1]),Y(trk[i-1]));c.lineTo(X(trk[i]),Y(trk[i]));c.stroke();
+  for(let i=1;i<tr.length;i++){
+    c.strokeStyle='hsl('+(210-210*Math.min(tr[i].m/.6,1))+',85%,55%)';
+    c.beginPath();c.moveTo(X(tr[i-1]),Y(tr[i-1]));c.lineTo(X(tr[i]),Y(tr[i]));c.stroke();
   }
   const dot=(p,col)=>{c.fillStyle=col;c.beginPath();c.arc(X(p),Y(p),6,0,7);c.fill();c.strokeStyle=fg;c.lineWidth=2;c.stroke()};
-  dot(trk[0],'#2ecc71');dot(trk[trk.length-1],css('--ball'));
+  dot(tr[0],'#2ecc71');dot(cur||tr[tr.length-1],css('--ball'));
   const len=[10,20,50,100,200,500,1000,2000,5000,10000].filter(v=>v*s<=w/3).pop()||10;
   c.strokeStyle=fg;c.lineWidth=2;c.beginPath();c.moveTo(12,h-14);c.lineTo(12+len*s,h-14);c.stroke();
   c.fillStyle=fg;c.textAlign='left';c.fillText(len>=1000?len/1000+'km':len+'m',12,h-20);
   c.fillStyle=mut;c.fillText('緑＝開始　色＝G（青→赤）',8,16);
   c.fillStyle=fg;c.textAlign='right';c.fillText('N↑',w-10,16);
 }
+// viewer
+function openV(id){
+  const L=saved.find(s=>s.id==id);if(!L||!L.rows.length)return;
+  const rows=L.rows;let o=null,mx=0,last=null;const tr=[],cur=[];
+  rows.forEach(r=>{
+    mx=Math.max(mx,r[3]);
+    if(r[5]!=null){
+      if(!o)o={la:r[5],lo:r[6]};
+      if(!last||last.la!==r[5]||last.lo!==r[6]){
+        const p={x:(r[6]-o.lo)*111320*Math.cos(o.la*Math.PI/180),y:(r[5]-o.la)*110540,m:mx};
+        tr.push(p);mx=0;last={la:r[5],lo:r[6],p};
+      }
+    }
+    cur.push(last?last.p:null);
+  });
+  V={rows,pts:rows.map(r=>({x:r[1],y:r[2],m:r[3]})),trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0};
+  $('vn').textContent=L.name;$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
+  $('vw').hidden=false;size();vseek(0);
+}
+function vseek(i){
+  if(i<V.i){V.env.fill(0);V.peak=0;V.i=-1}
+  for(let j=V.i+1;j<=i;j++){const r=V.rows[j];if(r[3]>V.peak)V.peak=r[3];if(r[3]>.02)envAdd(V.env,r[1],-r[2],r[3])}
+  V.i=i;
+}
+$('vx').onclick=()=>{$('vw').hidden=true;V=null};
+$('vp').onclick=()=>{
+  if(!V)return;
+  if(!V.play&&V.i>=V.rows.length-1){vseek(0);V.vt=V.rows[0][0]}
+  V.play=!V.play;$('vp').textContent=V.play?'⏸ 一時停止':'▶ 再生';
+};
+$('vs').onchange=e=>{if(V)V.sp=+e.target.value};
+$('vk').oninput=e=>{if(V){const i=+e.target.value;vseek(i);V.vt=V.rows[i][0]}};
+function vframe(dt){
+  const n=V.rows.length;
+  if(V.play){
+    V.vt+=dt*V.sp;let i=V.i;
+    while(i<n-1&&V.rows[i+1][0]<=V.vt)i++;
+    if(i!==V.i){vseek(i);$('vk').value=i}
+    if(i>=n-1){V.play=false;$('vp').textContent='▶ 再生'}
+  }
+  const r=V.rows[V.i],tm=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+  vseek(V.i);
+  drawBall(vc,vcx,{x:r[1],y:-r[2],S:nice(V.peak),peak:V.peak,env:V.env,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:q[1],y:-q[2]}))});
+  if(vg.clientWidth)drawGraph(vgx,vg.clientWidth,V.pts,true,V.i);
+  if(vm.clientWidth)drawMap(vmx,vm.clientWidth,V.trk,V.cur[V.i]);
+  $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h');
+}
+// main loop
 function loop(now){
   let tx=0,ty=0;
   if(drag){tx=drag.x*S*.95;ty=drag.y*S*.95}
-  else if(sensor){tx=sx*raw.x-off.x;ty=sy*raw.y-off.y}
+  else if(sensor){tx=sxv()*raw.x-off.x;ty=syv()*raw.y-off.y}
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
-  const al=dt/(1/(2*Math.PI*fcut)+dt);
+  const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
   sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;
   const m=Math.hypot(sg.x,sg.y);
   if(m>peak)peak=m;
   curM=Math.max(curM,m);
-  S=NICE.find(v=>v>=Math.max(peak*1.05,.3))||8;
-  if(m>.02){const a=Math.atan2(sg.y,sg.x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>env[i])env[i]=v}}
-  if(m>thr)beep();
+  S=nice(peak);
+  if(m>.02)envAdd(env,sg.x,sg.y,m);
+  if(m>cfg.thr)beep();
   trail.push({x:sg.x,y:sg.y});
   if(trail.length>40)trail.shift();
   if(now-lastS>=100){
@@ -217,13 +328,19 @@ function loop(now){
     hist.push({x:sg.x,y:-sg.y,m});if(hist.length>N)hist.shift();
     if(rec)log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon]);
   }
-  $('mag').textContent=m.toFixed(2);
-  $('gx').textContent=sg.x.toFixed(2);
-  $('gy').textContent=(-sg.y).toFixed(2);
-  $('pk').textContent=peak.toFixed(2);
-  $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
-  draw();graph();
-  if(mapDirty){map();mapDirty=false}
+  if(!$('pm').hidden){
+    $('mag').textContent=m.toFixed(2);
+    $('gx').textContent=sg.x.toFixed(2);
+    $('gy').textContent=(-sg.y).toFixed(2);
+    $('pk').textContent=peak.toFixed(2);
+    $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
+    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
+  }
+  if(!$('pl').hidden){
+    if(gc.clientWidth)drawGraph(gx,gc.clientWidth,hist,false);
+    if(mapDirty&&mp.clientWidth){drawMap(mpc,mp.clientWidth,trk,null);mapDirty=false}
+  }
+  if(V&&!$('vw').hidden)vframe(dt);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
