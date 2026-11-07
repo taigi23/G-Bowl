@@ -98,7 +98,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </div></div>
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
-<div class="set"><span>警告音</span><span><select id="thr" aria-label="警告のしきい値"><option value="0.3">0.3G</option><option value="0.5">0.5G</option><option value="0.7">0.7G</option><option value="1">1.0G</option></select> <input type="checkbox" id="snd" aria-label="警告音"></span></div>
+<div class="set"><span>警告音</span><input type="checkbox" id="snd" aria-label="警告音"></div>
+<div class="set"><span>音が鳴り始めるG <b><span id="thrv">0.5</span> G</b></span><input type="range" id="thr" min="0" max="1" step="0.1" aria-label="音が鳴り始めるG"></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
@@ -129,14 +130,14 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   size();
 });
 // settings
-$('snd').checked=cfg.snd;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
+$('snd').checked=cfg.snd;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
 $('gear').onclick=()=>{
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
 $('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
 $('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
-$('thr').onchange=e=>{cfg.thr=+e.target.value;saveCfg()};
+$('thr').oninput=e=>{cfg.thr=Math.round(+e.target.value*10)/10;$('thrv').textContent=cfg.thr.toFixed(1);saveCfg()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate();mirror(false,true)};
 // 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
