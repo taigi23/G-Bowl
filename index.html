@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.3.1 (2026-11-07) 修正: 採点機能より前に保存したログがあると起動時にエラーになり、Gボールの目盛りが出ずセンサーも開始できなかった
   1.3.0 (2026-11-07) 円内の最大G表示を削除。ログのグラフを左右G・前後G・車速・減点の4段に分割（減点は時系列で表示）
   1.2.0 (2026-11-07) 採点機能を追加（運転操作によるジャーク＋Gボール軌跡の丸み。路面・振動ノイズは除外）
   1.1.0 (2026-11-07) 制限速度の取得元を、混雑で応答しない Overpass から Valhalla（FOSSGIS の経路検索サーバー）に変更。直近のGPS軌跡で道を照合
@@ -136,7 +137,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.3.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.3.1',APP_DATE='2026-11-07';
+addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -269,8 +271,9 @@ $('rec').onclick=e=>{
   const sc=scorer?scoreResult(scorer):null;
   if(confirm('記録を保存しますか？\n'+log.length+'件（約'+Math.round(log[log.length-1][0])+'秒）'+(sc?'\nスコア '+sc.total+'点（ジャーク '+sc.jerk+'・丸み '+sc.round+'）':'')))saveLog(sc);else msg('記録を破棄しました。');
 };
+function logScore(s){try{if(s.score===undefined)s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
 function renderList(){
-  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+((s.score||(s.score=scoreRows(s.rows)))?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
+  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+(logScore(s)?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
 }
 $('list').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
@@ -621,7 +624,7 @@ function scoreSeries(rows){
   }
   return{res:scoreResult(S),pen:{pj,ev}};
 }
-const scoreRows=rows=>scoreSeries(rows).res;
+function scoreRows(rows){return scoreSeries(rows).res}
 function scoreHtml(sc){
   if(!sc)return '<p class="mcap">加減速や旋回が少ないため、採点できませんでした（合計5秒以上必要です）。</p>';
   const row=(l,v,sub)=>'<div class="sr"><span>'+l+'</span><b>'+v+'</b><small>'+sub+'</small></div>';
