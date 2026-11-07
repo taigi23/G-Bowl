@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.4.0 (2026-11-07) カメラ表示を追加。カメラ映像の上にGボール・数値・制限速度を重ねて表示（「カメラ」ボタン）
   1.3.1 (2026-11-07) 修正: 採点機能より前に保存したログがあると起動時にエラーになり、Gボールの目盛りが出ずセンサーも開始できなかった
   1.3.0 (2026-11-07) 円内の最大G表示を削除。ログのグラフを左右G・前後G・車速・減点の4段に分割（減点は時系列で表示）
   1.2.0 (2026-11-07) 採点機能を追加（運転操作によるジャーク＋Gボール軌跡の丸み。路面・振動ノイズは除外）
@@ -65,6 +66,14 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 ul{list-style:none;margin:0;padding:0}
 li{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;background:var(--panel);border-radius:10px;padding:10px 12px;margin:6px 0}
 li small{display:block;color:var(--mut)}
+#camw{position:fixed;inset:0;background:#000;z-index:7;overflow:hidden}
+#camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#camc{position:absolute;display:block;left:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(42vw,200px);height:min(42vw,200px);border-radius:50%;background:rgba(0,0,0,.35)}
+#camt{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top,0px));color:#fff;background:rgba(0,0,0,.45);border-radius:12px;padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000}
+#camg{font-size:2.4rem;font-weight:700;letter-spacing:-.02em}
+#camd,#cams{font-size:.8rem}
+#camx{position:absolute;left:12px;top:calc(12px + env(safe-area-inset-top,0px))}
+#camst{position:absolute;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 #vw{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5;padding-top:env(safe-area-inset-top,0px)}
 #vr{text-align:center;font-variant-numeric:tabular-nums;margin:4px 0}
 input[type=range]{width:100%}
@@ -95,6 +104,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns">
 <button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
+<button id="cam">カメラ</button>
 </div>
 </section>
 <section id="pl" hidden>
@@ -121,6 +131,13 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="mcap" id="vnogps" hidden>このログにはGPSの位置がないので、地図は出ません。記録するときは「開始」を押してGPSも動かしてください。</p>
 <canvas id="vg" aria-label="ログのグラフ"></canvas>
 </div></div>
+<div id="camw" hidden>
+<video id="camv" playsinline muted autoplay aria-label="カメラ映像"></video>
+<canvas id="camc" aria-label="Gボール"></canvas>
+<div id="camt"><div><b id="camg">0.00</b> G</div><div id="camd"></div><div id="cams"></div></div>
+<button id="camx">✕ 閉じる</button>
+<button class="p" id="camst">開始</button>
+</div>
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
 <div class="set"><span>警告音</span><input type="checkbox" id="snd" aria-label="警告音"></div>
@@ -137,10 +154,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.3.1',APP_DATE='2026-11-07';
+const APP_VERSION='1.4.0',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
+const camc=$('camc'),camcx=camc.getContext('2d');
+let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
 let cfg={fc:2,thr:.5,snd:true,over:true,margin:0,fx:false,fy:false,v:4};
@@ -155,7 +174,7 @@ let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,288);fit(vc);fit(vg,288);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
+function size(){fit(cv);fit(gc,288);fit(vc);fit(vg,288);fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
 let LM=null,VM=null;
 addEventListener('resize',size);size();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
@@ -294,6 +313,52 @@ $('impf').onchange=async e=>{
     openL(r.L);
   }catch(err){msg('CSVを読み込めませんでした。')}
 };
+// ===== カメラ表示: カメラ映像の上にGボールと数値を重ねる =====
+function limTxt(){return spdLim!=null?spdLim:roadNoData?'?':wid==null?'--':limStat.err?'×':(valBusy||!limStat.t)?'…':'--'}
+async function openCam(){
+  if(camOn)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){msg('この画面ではカメラを使えません。Safariの通常のタブで開いてください。');return}
+  $('camw').hidden=false;size();
+  try{
+    camS=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    const v=$('camv');v.srcObject=camS;await v.play().catch(()=>{});
+    camOn=true;
+  }catch(e){
+    closeCam();
+    msg('カメラを開けませんでした（'+(e&&e.name==='NotAllowedError'?'カメラの許可がありません':errText(e))+'）。');
+  }
+}
+function closeCam(){
+  camOn=false;$('camw').hidden=true;
+  if(camS){camS.getTracks().forEach(t=>t.stop());camS=null}
+  $('camv').srcObject=null;
+}
+$('cam').onclick=openCam;
+$('camx').onclick=closeCam;
+$('camst').onclick=()=>$('start').onclick();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)closeCam()});
+function drawCam(){
+  const w=camc.clientWidth;if(!w)return;
+  const R=w/2,k=R*.9,c=camcx,ball=css('--ball'),pc=css('--peak'),S2=S||.4;
+  c.clearRect(0,0,w,w);
+  c.strokeStyle='rgba(255,255,255,.85)';c.lineWidth=1.2;
+  for(let i=1;i<=4;i++){c.beginPath();c.arc(R,R,k*i/4,0,7);c.stroke()}
+  c.beginPath();c.moveTo(R,R*.1);c.lineTo(R,w-R*.1);c.moveTo(R*.1,R);c.lineTo(w-R*.1,R);c.stroke();
+  if(peak>.02){
+    c.beginPath();
+    env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v/S2,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?c.lineTo(X,Y):c.moveTo(X,Y)});
+    c.closePath();c.globalAlpha=.25;c.fillStyle=pc;c.fill();c.globalAlpha=1;
+    c.strokeStyle=pc;c.lineWidth=2;c.stroke();
+  }
+  trail.forEach((p,i)=>{c.globalAlpha=i/trail.length*.4;c.fillStyle=ball;c.beginPath();c.arc(R+p.x/S2*k,R+p.y/S2*k,w*.03,0,7);c.fill()});
+  c.globalAlpha=1;
+  let bx=sg.x/S2,by=sg.y/S2,l=Math.hypot(bx,by);if(l>1){bx/=l;by/=l}
+  c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,w*.06,0,7);c.fill();
+  $('camg').textContent=Math.hypot(sg.x,sg.y).toFixed(2);
+  $('camd').textContent='左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　最大 '+peak.toFixed(2);
+  $('cams').textContent=(gps.sp==null?'--':Math.round(gps.sp))+' km/h　制限 '+limTxt();
+  $('camst').textContent=running?'停止':'開始';
+}
 // gps
 function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null}
 function startGps(){
@@ -667,7 +732,7 @@ function loop(now){
     $('gy').textContent=(-sg.y).toFixed(2);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
-    $('lim').textContent=spdLim!=null?spdLim:roadNoData?'?':wid==null?'--':limStat.err?'×':(valBusy||!limStat.t)?'…':'--';
+    $('lim').textContent=limTxt();
     $('sp').style.color=overState?css('--peak'):'';
     if(now-sclT>500){
       sclT=now;const el=$('scl');el.hidden=!rec;
@@ -679,6 +744,7 @@ function loop(now){
     if(gc.clientWidth)drawPanels(gx,gc.clientWidth,hist,false);
   }
   if(V&&!$('vw').hidden)vframe(dt);
+  if(camOn)drawCam();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
