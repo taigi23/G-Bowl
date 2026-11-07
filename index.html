@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.0.3 (2026-11-07) 制限速度のサーバーを変更（overpass.private.coffee を優先、混雑中の overpass-api.de は予備）。つながったサーバーを次回も優先
   1.0.2 (2026-11-07) 設定に制限速度サーバーの接続テストを追加。取得エラー時は制限の欄に「×」を表示
   1.0.1 (2026-11-07) 制限速度の取得を修正（問い合わせ方式の変更）。道路はあるが制限速度が未登録なら「?」を表示。設定に取得状況を表示
   1.0.0 (2026-11-07) バージョン管理を開始。Gメーター、最大Gの軌跡、ログ記録・再生・CSV、
@@ -123,7 +124,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.0.2',APP_DATE='2026-11-07';
+const APP_VERSION='1.0.3',APP_DATE='2026-11-07';
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -306,15 +307,17 @@ function parseLimit(v){
 //  ・すぐ: 現在地の周り60mの道だけを小さく問い合わせる（返事が速い）
 //  ・先回り: 周り約1kmの道をまとめて取得し、GPS更新ごとに手元で照合する（通信なしで即反映）
 const dist=(a,b,c,d)=>Math.hypot((d-b)*111320*Math.cos(a*Math.PI/180),(c-a)*110540);
-const OVPS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const OVPS=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
+let ovpPref=0;   // 最後につながったサーバーを先に使う
 async function ovp(q,ms){
   let err;
-  for(const u of OVPS){
+  for(let k=0;k<OVPS.length;k++){
+    const i=(ovpPref+k)%OVPS.length,u=OVPS[i];
     const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),ms);
     try{
       const r=await fetch(u+'?data='+encodeURIComponent(q),{signal:ctl.signal});
       if(!r.ok)throw new Error('http '+r.status);
-      return await r.json();
+      const j=await r.json();ovpPref=i;return j;
     }catch(e){err=e}finally{clearTimeout(tm)}
   }
   throw err;
