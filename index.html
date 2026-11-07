@@ -109,9 +109,9 @@ const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:5,thr:.5,snd:true,fx:false,fy:true,v:2};
+let cfg={fc:5,thr:.5,snd:true,fx:false,fy:false,v:3};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
-try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==2){st.fy=true;st.v=2}Object.assign(cfg,st);saveCfg()}catch(e){}
+try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==3){st.fy=false;st.v=3}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,drag=null,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
@@ -134,8 +134,21 @@ $('gear').onclick=()=>{const d=$('st');d.showModal?d.showModal():d.setAttribute(
 $('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
 $('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
 $('thr').onchange=e=>{cfg.thr=+e.target.value;saveCfg()};
-$('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate()};
-$('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate()};
+$('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate();mirror(true,false)};
+$('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate();mirror(false,true)};
+// 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
+function mirror(mx,my){
+  if(mx){sg.x=-sg.x;trail.forEach(p=>{p.x=-p.x});hist.forEach(p=>{p.x=-p.x});log.forEach(r=>{r[1]=-r[1]})}
+  if(my){sg.y=-sg.y;trail.forEach(p=>{p.y=-p.y});hist.forEach(p=>{p.y=-p.y});log.forEach(r=>{r[2]=-r[2]})}
+  const n=env.length,ne=new Array(n).fill(0);
+  env.forEach((v,i)=>{
+    const a=i/n*2*Math.PI-Math.PI;let x=Math.cos(a),y=Math.sin(a);
+    if(mx)x=-x;if(my)y=-y;
+    const j=((Math.round((Math.atan2(y,x)+Math.PI)/(2*Math.PI)*n))%n+n)%n;
+    if(v>ne[j])ne[j]=v;
+  });
+  env=ne;
+}
 $('fc').oninput=e=>{cfg.fc=+e.target.value;$('fcv').textContent=cfg.fc;saveCfg()};
 // sensor
 function onMotion(e){
