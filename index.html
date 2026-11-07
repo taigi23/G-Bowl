@@ -59,7 +59,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--ball);outline-
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},sx=ios?1:-1,sy=ios?-1:1,peak=0,trail=[],sensor=false,drag=null;
-let hist=[],N=300,lastS=0,rec=false,log=[],t0=0,gps={sp:null,lat:null,lon:null},wid=null,ac=null,soundOn=true,lastBeep=0,thr=.5;
+let env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0,gps={sp:null,lat:null,lon:null},wid=null,ac=null,soundOn=true,lastBeep=0,thr=.5;
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const d=devicePixelRatio||1,w=c.clientWidth,hh=h||w;c.width=Math.round(w*d);c.height=Math.round(hh*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
 function size(){fit(cv);fit(gc,120)}
@@ -86,7 +86,7 @@ async function start(){
 const calibrate=()=>{off={x:sx*raw.x,y:sy*raw.y}};
 $('start').onclick=start;
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
-$('rst').onclick=()=>{peak=0;trail=[]};
+$('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
 $('fx').onclick=()=>{sx=-sx;calibrate()};
 $('fy').onclick=()=>{sy=-sy;calibrate()};
 $('thr').onchange=e=>{thr=+e.target.value};
@@ -129,11 +129,14 @@ function draw(){
   ctx.beginPath();ctx.moveTo(R,R*.06);ctx.lineTo(R,w-R*.06);ctx.moveTo(R*.06,R);ctx.lineTo(w-R*.06,R);ctx.stroke();
   ctx.fillStyle=ring;ctx.font='11px system-ui';ctx.textAlign='left';
   [.25,.5,.75,1].forEach(g=>ctx.fillText(g+'G',R+4,R-k*g-3));
-  if(peak>0){
-    const pr=Math.min(peak,1)*k;
-    ctx.strokeStyle=pc;ctx.lineWidth=2;ctx.setLineDash([6,5]);
-    ctx.beginPath();ctx.arc(R,R,pr,0,7);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle=pc;ctx.textAlign='center';ctx.fillText('最大 '+peak.toFixed(2)+'G',R,Math.min(R+pr+14,w-4));
+  if(peak>.02){
+    ctx.beginPath();
+    env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
+    ctx.closePath();ctx.globalAlpha=.14;ctx.fillStyle=pc;ctx.fill();ctx.globalAlpha=1;
+    ctx.strokeStyle=pc;ctx.lineWidth=2;ctx.stroke();
+    const bi=env.indexOf(Math.max(...env)),ba=bi/72*2*Math.PI-Math.PI,br=Math.min(env[bi],1)*k+14;
+    ctx.fillStyle=pc;ctx.textAlign='center';
+    ctx.fillText('最大 '+peak.toFixed(2)+'G',Math.max(34,Math.min(w-34,R+Math.cos(ba)*br)),Math.max(12,Math.min(w-6,R+Math.sin(ba)*br)));
   }
   trail.forEach((p,i)=>{ctx.globalAlpha=i/trail.length*.35;ctx.fillStyle=ball;ctx.beginPath();ctx.arc(R+p.x*k,R+p.y*k,R*.025,0,7);ctx.fill()});
   ctx.globalAlpha=1;
@@ -162,6 +165,7 @@ function loop(now){
   sg.x+=(tx-sg.x)*.2;sg.y+=(ty-sg.y)*.2;
   const m=Math.hypot(sg.x,sg.y);
   if(m>peak)peak=m;
+  if(m>.02){const a=Math.atan2(sg.y,sg.x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>env[i])env[i]=v}}
   if(m>thr)beep();
   trail.push({x:Math.max(-1,Math.min(1,sg.x)),y:Math.max(-1,Math.min(1,sg.y))});
   if(trail.length>40)trail.shift();
