@@ -120,7 +120,7 @@ const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
-let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curWay=null;
+let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0;
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -260,7 +260,7 @@ $('impf').onchange=async e=>{
   }catch(err){msg('CSVを読み込めませんでした。')}
 };
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curWay=null}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -271,8 +271,10 @@ function startGps(){
       const q={la:c.latitude,lo:c.longitude,m:curM};
       trk.push(q);curM=0;if(trk.length>20000)trk.shift();
       if(LM)liveAdd(q,trk[trk.length-2]);
+      lastHdg=(c.heading!=null&&!isNaN(c.heading)&&(c.speed||0)>2)?c.heading:null;
       loadRoads(c.latitude,c.longitude);
-      matchRoad(c.latitude,c.longitude,(c.heading!=null&&!isNaN(c.heading)&&(c.speed||0)>2)?c.heading:null);
+      quickRoads(c.latitude,c.longitude);
+      matchRoad(c.latitude,c.longitude,lastHdg);
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
 }
@@ -283,13 +285,15 @@ function parseLimit(v){
   let n=+m[1];if(m[2]&&m[2].toLowerCase()==='mph')n=Math.round(n*1.609);
   return n>0&&n<=200?n:null;
 }
-// 周辺1.5kmの道路（制限速度つき）をまとめて取得しておき、GPSが更新されるたびに手元で一番近い道を探す
+// 制限速度の取得は2段構え
+//  ・すぐ: 現在地の周り60mの道だけを小さく問い合わせる（返事が速い）
+//  ・先回り: 周り約1kmの道をまとめて取得し、GPS更新ごとに手元で照合する（通信なしで即反映）
 const dist=(a,b,c,d)=>Math.hypot((d-b)*111320*Math.cos(a*Math.PI/180),(c-a)*110540);
 const OVPS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-async function ovp(q){
+async function ovp(q,ms){
   let err;
   for(const u of OVPS){
-    const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),8000);
+    const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),ms);
     try{
       const r=await fetch(u,{method:'POST',body:'data='+encodeURIComponent(q),signal:ctl.signal});
       if(!r.ok)throw new Error('http '+r.status);
@@ -298,32 +302,47 @@ async function ovp(q){
   }
   throw err;
 }
+function buildWays(j){
+  const ways=[];
+  (j.elements||[]).forEach(e=>{
+    const v=parseLimit(e.tags&&e.tags.maxspeed);
+    if(v==null||!e.geometry||e.geometry.length<2)return;
+    let a=90,b=-90,c=180,d=-180;
+    e.geometry.forEach(g=>{a=Math.min(a,g.lat);b=Math.max(b,g.lat);c=Math.min(c,g.lon);d=Math.max(d,g.lon)});
+    ways.push({id:e.id,lim:v,g:e.geometry,bb:[a,b,c,d]});
+  });
+  return ways;
+}
+const covered=(la,lo)=>roads&&dist(roads.la,roads.lo,la,lo)<600;
+function limFail(){if(++limFails===3)msg('制限速度のデータを取得できません。電波の状態を確認してください。')}
+const rematch=()=>{if(gps.lat!=null)matchRoad(gps.lat,gps.lon,lastHdg)};
 function loadRoads(la,lo){
-  if(limBusy)return;
-  if(roads&&dist(roads.la,roads.lo,la,lo)<1000)return;           // まだ取得範囲の内側
-  if(lastQ&&lastQ.fail&&Date.now()-lastQ.t<15000)return;         // 失敗したら少し待って再挑戦
+  if(limBusy||covered(la,lo))return;
+  if(lastQ&&lastQ.fail&&Date.now()-lastQ.t<20000)return;
   limBusy=true;const q={t:Date.now(),fail:false};lastQ=q;
-  ovp('[out:json][timeout:15];way(around:1500,'+la+','+lo+')[highway][maxspeed];out tags geom;')
-    .then(j=>{
-      const ways=[];
-      (j.elements||[]).forEach(e=>{
-        const v=parseLimit(e.tags&&e.tags.maxspeed);
-        if(v==null||!e.geometry||e.geometry.length<2)return;
-        let a=90,b=-90,c=180,d=-180;
-        e.geometry.forEach(g=>{a=Math.min(a,g.lat);b=Math.max(b,g.lat);c=Math.min(c,g.lon);d=Math.max(d,g.lon)});
-        ways.push({lim:v,g:e.geometry,bb:[a,b,c,d]});
-      });
-      roads={la,lo,ways};curWay=null;
-      if(gps.lat!=null)matchRoad(gps.lat,gps.lon,null);
-    })
-    .catch(()=>{q.fail=true})
+  const dla=1000/110540,dlo=1000/(111320*Math.cos(la*Math.PI/180));
+  const bb=[(la-dla).toFixed(5),(lo-dlo).toFixed(5),(la+dla).toFixed(5),(lo+dlo).toFixed(5)].join(',');
+  ovp('[out:json][timeout:25];way[highway][maxspeed]('+bb+');out geom;',25000)
+    .then(j=>{roads={la,lo,ways:buildWays(j)};limFails=0;rematch()})
+    .catch(()=>{q.fail=true;limFail()})
     .finally(()=>{limBusy=false});
 }
+function quickRoads(la,lo){
+  if(quickBusy||covered(la,lo))return;
+  const now=Date.now();
+  if(near&&(now-near.t<4000||(dist(near.la,near.lo,la,lo)<30&&now-near.t<15000)))return;
+  quickBusy=true;
+  ovp('[out:json][timeout:8];way[highway][maxspeed](around:60,'+la.toFixed(6)+','+lo.toFixed(6)+');out geom;',8000)
+    .then(j=>{near={la,lo,t:now,ways:buildWays(j)};limFails=0;rematch()})
+    .catch(()=>{near={la,lo,t:now,ways:near?near.ways:[]};limFail()})
+    .finally(()=>{quickBusy=false});
+}
 function matchRoad(la,lo,hdg){
-  if(!roads)return;
+  const list=(roads&&dist(roads.la,roads.lo,la,lo)<1000?roads.ways:[]).concat(near&&dist(near.la,near.lo,la,lo)<200?near.ways:[]);
+  if(!list.length){if(!limBusy&&!quickBusy)spdLim=null;return}
   const kx=111320*Math.cos(la*Math.PI/180),ky=110540,pla=60/ky,plo=60/kx;
   let best=null,bc=1e9;
-  roads.ways.forEach(w=>{
+  list.forEach(w=>{
     if(la<w.bb[0]-pla||la>w.bb[1]+pla||lo<w.bb[2]-plo||lo>w.bb[3]+plo)return;
     for(let i=1;i<w.g.length;i++){
       const ax=(w.g[i-1].lon-lo)*kx,ay=(w.g[i-1].lat-la)*ky,bx=(w.g[i].lon-lo)*kx,by=(w.g[i].lat-la)*ky;
@@ -332,11 +351,11 @@ function matchRoad(la,lo,hdg){
       const d=Math.hypot(ax+t*dx,ay+t*dy);if(d>40)continue;
       let c=d;
       if(hdg!=null&&L2>1)c+=20*Math.abs(Math.sin(Math.atan2(dx,dy)-hdg*Math.PI/180));  // 進行方向に沿う道を優先
-      if(w===curWay)c-=8;                                                                // 今の道を少し優先してちらつきを防ぐ
+      if(w.id===curId)c-=8;                                                              // 今の道を少し優先してちらつきを防ぐ
       if(c<bc){bc=c;best=w}
     }
   });
-  curWay=best;spdLim=best?best.lim:null;
+  curId=best?best.id:null;spdLim=best?best.lim:null;
 }
 // 超過時に「ピピっ」。1回の超過につき最大3回、4秒間隔
 function pipi(){
@@ -524,7 +543,7 @@ function loop(now){
     $('gy').textContent=(-sg.y).toFixed(2);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
-    $('lim').textContent=spdLim==null?'--':spdLim;
+    $('lim').textContent=spdLim!=null?spdLim:(wid!=null&&(limBusy||quickBusy)?'…':'--');
     $('sp').style.color=overState?css('--peak'):'';
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
