@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.3.0 (2026-11-07) 円内の最大G表示を削除。ログのグラフを左右G・前後G・車速・減点の4段に分割（減点は時系列で表示）
   1.2.0 (2026-11-07) 採点機能を追加（運転操作によるジャーク＋Gボール軌跡の丸み。路面・振動ノイズは除外）
   1.1.0 (2026-11-07) 制限速度の取得元を、混雑で応答しない Overpass から Valhalla（FOSSGIS の経路検索サーバー）に変更。直近のGPS軌跡で道を照合
   1.0.3 (2026-11-07) 制限速度のサーバーを変更（overpass.private.coffee を優先、混雑中の overpass-api.de は予備）。つながったサーバーを次回も優先
@@ -35,7 +36,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .bw{position:relative}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
-#g,#vg{height:120px;border-radius:10px;margin-top:10px}
+#g,#vg{height:288px;border-radius:10px;margin-top:10px}
 #mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
 .mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
 .sc{background:var(--panel);border-radius:12px;padding:12px 14px;margin:10px 0}
@@ -135,7 +136,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.2.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.3.0',APP_DATE='2026-11-07';
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -147,12 +148,12 @@ const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
-let scorer=null,sclT=0;
+let scorer=null,sclT=0,liveS=null,liveEvN=0,logPen=[],logEv=[],recEvN=0;
 let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,recent=[],lastVal=null,valBusy=false,roadNoData=false,limStat={t:null,n:0,err:''};
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,120);fit(vc);fit(vg,120);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
+function size(){fit(cv);fit(gc,288);fit(vc);fit(vg,288);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
 let LM=null,VM=null;
 addEventListener('resize',size);size();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
@@ -218,7 +219,7 @@ const calibrate=()=>{off={x:sxv()*raw.x,y:syv()*raw.y}};
 $('start').onclick=async()=>{
   if(running){stopAll();return}
   setRun(true);
-  if(await start())startGps();else setRun(false);
+  if(await start()){startGps();liveS=newScorer();liveEvN=0}else setRun(false);
 };
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
@@ -231,11 +232,11 @@ function saveLog(sc){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
   const rows=log.map(r=>[q(r[0],1),q(r[1],3),q(r[2],3),q(r[3],3),q(r[4],1),q(r[5],6),q(r[6],6)]);
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const r=addLog(rows,name,sc);
+  const r=addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()});
   msg(r.ok?'ログを保存しました（'+rows.length+'件）'+(r.L.score?'　スコア '+r.L.score.total+'点':'')+'。「ログ」タブから再生できます。':'保存できませんでした（容量がいっぱいです）。古いログを削除してください。');
 }
-function addLog(rows,name,sc){
-  const L={id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+rows.reduce((a,r)=>Math.max(a,r[3]),0).toFixed(2),gps:rows.some(r=>r[5]!=null),score:sc||scoreRows(rows),rows};
+function addLog(rows,name,sc,pen){
+  const L={id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+rows.reduce((a,r)=>Math.max(a,r[3]),0).toFixed(2),gps:rows.some(r=>r[5]!=null),score:sc||scoreRows(rows),pen:pen||null,rows};
   saved.unshift(L);
   if(persist()){renderList();return{L,ok:true}}
   saved.shift();return{L,ok:false};
@@ -262,7 +263,7 @@ function parseCsv(t){
   return rows;
 }
 $('rec').onclick=e=>{
-  if(!rec){rec=true;log=[];t0=performance.now();scorer=newScorer();e.target.textContent='記録停止';e.target.classList.add('on');msg('記録中です（1秒に10回）。');return}
+  if(!rec){rec=true;log=[];logPen=[];logEv=[];recEvN=0;t0=performance.now();scorer=newScorer();e.target.textContent='記録停止';e.target.classList.add('on');msg('記録中です（1秒に10回）。');return}
   rec=false;e.target.textContent='記録開始';e.target.classList.remove('on');
   if(!log.length){msg('記録が空でした。');return}
   const sc=scorer?scoreResult(scorer):null;
@@ -418,9 +419,6 @@ function drawBall(cvs,c,sc){
     sc.env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v/S,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?c.lineTo(X,Y):c.moveTo(X,Y)});
     c.closePath();c.globalAlpha=.14;c.fillStyle=pc;c.fill();c.globalAlpha=1;
     c.strokeStyle=pc;c.lineWidth=2;c.stroke();
-    const bi=sc.env.indexOf(Math.max(...sc.env)),ba=bi/72*2*Math.PI-Math.PI,br=Math.min(sc.env[bi]/S,1)*k+14;
-    c.fillStyle=pc;c.textAlign='center';
-    c.fillText('最大 '+sc.peak.toFixed(2)+'G',Math.max(34,Math.min(w-34,R+Math.cos(ba)*br)),Math.max(12,Math.min(w-6,R+Math.sin(ba)*br)));
   }
   sc.trail.forEach((p,i)=>{c.globalAlpha=i/sc.trail.length*.35;c.fillStyle=ball;c.beginPath();c.arc(R+p.x/S*k,R+p.y/S*k,R*.025,0,7);c.fill()});
   c.globalAlpha=1;
@@ -428,17 +426,47 @@ function drawBall(cvs,c,sc){
   if(l>1){bx/=l;by/=l}
   c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,R*.07,0,7);c.fill();
 }
-function drawGraph(c,w,pts,full,cur){
-  const h=120,y0=h/2,sc=y0/1.2,ring=css('--ring'),mut=css('--mut'),ball=css('--ball'),n=pts.length;
-  c.clearRect(0,0,w,h);c.strokeStyle=ring;c.lineWidth=1;
-  c.beginPath();c.moveTo(0,y0);c.lineTo(w,y0);c.stroke();
-  c.setLineDash([4,4]);c.beginPath();c.moveTo(0,y0-cfg.thr*sc);c.lineTo(w,y0-cfg.thr*sc);c.stroke();c.setLineDash([]);
+// ログのグラフ: 左右G / 前後G / 車速 / 減点 の4段
+function drawPanels(c,w,pts,full,cur){
+  const H=72,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak');
+  c.clearRect(0,0,w,H*4);
   const px=i=>full?i/Math.max(n-1,1)*w:w-(n-1-i)/(N-1)*w;
-  const line=(k,col,lw)=>{c.strokeStyle=col;c.lineWidth=lw;c.beginPath();pts.forEach((p,i)=>{const Y=y0-p[k]*sc;i?c.lineTo(px(i),Y):c.moveTo(px(i),Y)});c.stroke()};
-  line('x',mut,1);line('y',mut,1);line('m',ball,2);
-  if(full&&cur!=null){c.strokeStyle=css('--fg');c.lineWidth=1.5;c.beginPath();c.moveTo(px(cur),0);c.lineTo(px(cur),h);c.stroke()}
-  c.fillStyle=mut;c.font='10px system-ui';c.textAlign='left';
-  c.fillText(full?'細線：左右・前後　太線：合成G　縦線：再生位置':'過去30秒　細線：左右・前後　太線：合成G　点線：警告ライン',4,11);
+  const niceR=v=>[0.3,0.5,0.8,1.2,2,4].find(r=>r>=v)||4;
+  let ax=0,ay=0,smax=0;
+  pts.forEach(p=>{ax=Math.max(ax,Math.abs(p.x));ay=Math.max(ay,Math.abs(p.y));if(p.sp!=null)smax=Math.max(smax,p.sp)});
+  const rx=niceR(ax*1.1),ry=niceR(ay*1.1),rs=Math.max(40,Math.ceil(smax*1.1/20)*20);
+  const panel=(k,label,draw)=>{
+    const top=k*H;c.save();c.beginPath();c.rect(0,top,w,H);c.clip();
+    if(k<3){c.strokeStyle=ring;c.lineWidth=1;c.beginPath();c.moveTo(0,top+H-.5);c.lineTo(w,top+H-.5);c.stroke()}
+    draw(top);
+    c.fillStyle=mut;c.font='10px system-ui';c.textAlign='left';c.fillText(label,4,top+11);
+    c.restore();
+  };
+  const line=(key,zero,scale)=>{
+    c.strokeStyle=ball;c.lineWidth=1.6;c.beginPath();let on=false;
+    pts.forEach((p,i)=>{const v=p[key];if(v==null){on=false;return}const Y=zero-v*scale;on?c.lineTo(px(i),Y):c.moveTo(px(i),Y);on=true});
+    c.stroke();
+  };
+  const gPanel=(k,key,label,r)=>panel(k,label+'　±'+r+'G',top=>{
+    const mid=top+H/2+5,sc=(H/2-11)/r;
+    c.strokeStyle=ring;c.lineWidth=1;c.setLineDash([3,3]);c.beginPath();c.moveTo(0,mid);c.lineTo(w,mid);c.stroke();c.setLineDash([]);
+    line(key,mid,sc);
+  });
+  gPanel(0,'x',(full?'':'過去30秒　')+'左右G',rx);
+  gPanel(1,'y','前後G',ry);
+  panel(2,'車速　0〜'+rs+' km/h',top=>line('sp',top+H-4,(H-18)/rs));
+  panel(3,'減点　棒＝ジャーク　▲＝トゲ　■＝＋型',top=>{
+    const base=top+H-4,hh=H-30,bw=Math.max(1.5,full?w/Math.max(n,1):w/N);
+    c.fillStyle=pc;c.globalAlpha=.6;
+    pts.forEach((p,i)=>{if(p.pj>0)c.fillRect(px(i)-bw/2,base-p.pj*hh,bw,p.pj*hh)});
+    c.globalAlpha=1;
+    pts.forEach((p,i)=>{
+      if(!p.ev)return;const X=px(i),Y=top+24;
+      if(p.ev==='spike'){c.fillStyle=pc;c.beginPath();c.moveTo(X,Y-6);c.lineTo(X+6,Y+5);c.lineTo(X-6,Y+5);c.closePath();c.fill()}
+      else{c.fillStyle='#8b5cf6';c.fillRect(X-5,Y-5,10,10)}
+    });
+  });
+  if(full&&cur!=null){c.strokeStyle=fg;c.lineWidth=1.5;c.beginPath();c.moveTo(px(cur),0);c.lineTo(px(cur),H*4);c.stroke()}
 }
 const gcol=m=>'hsl('+(220-220*Math.min(m/.6,1))+',100%,36%)';
 function makeMap(el){
@@ -487,7 +515,10 @@ function openL(L){
     if(r[5]!=null&&r[6]!=null&&(!last||last.la!==r[5]||last.lo!==r[6])){last={la:r[5],lo:r[6],m:mx};tr.push(last);mx=0}
     cur.push(last);
   });
-  V={rows,pts:rows.map(r=>({x:r[1],y:r[2],m:r[3]})),trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0};
+  const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
+  const pts=rows.map((r,i)=>({x:r[1],y:r[2],m:r[3],sp:r[4],pj:pen.pj[i]||0,ev:null}));
+  pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
+  V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0};
   $('vn').textContent=L.name;$('vsc').innerHTML=scoreHtml(L.score||(L.score=scoreRows(L.rows)));$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
   $('vw').hidden=false;
   const has=tr.length>0;$('vmw').hidden=!has;$('vnogps').hidden=has;
@@ -524,7 +555,7 @@ function vframe(dt){
   const r=V.rows[V.i],tm=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
   vseek(V.i);
   drawBall(vc,vcx,{x:r[1],y:-r[2],S:nice(V.peak),peak:V.peak,env:V.env,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:q[1],y:-q[2]}))});
-  if(vg.clientWidth)drawGraph(vgx,vg.clientWidth,V.pts,true,V.i);
+  if(vg.clientWidth)drawPanels(vgx,vg.clientWidth,V.pts,true,V.i);
   const cp=V.cur[V.i];
   if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map);if(V.play&&!VM.map.getBounds().contains([cp.la,cp.lo]))VM.map.panTo([cp.la,cp.lo])}
   $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h');
@@ -534,7 +565,8 @@ function vframe(dt){
 //    残った「運転操作の帯域」のGの変化率だけを評価する
 // 2) 軌跡の丸み: トゲ（Gが出てすぐ戻る、向きの急な反転）と、
 //    ＋型（前後Gと左右Gの切り替えで、いったん中心まで戻る）を減点する
-function newScorer(){return{lx:0,ly:0,lx2:0,ly2:0,px:null,py:null,jx:0,jy:0,prx:null,pry:null,noiseSq:0,noiseT:0,t:0,act:0,pen:0,jmax:0,hist:[],lastS:-1,corners:0,cornerW:0,lastCorner:-9,dom:null,domT:-9,minG:9,trans:0,conn:0}}
+function newScorer(){return{lx:0,ly:0,lx2:0,ly2:0,px:null,py:null,jx:0,jy:0,prx:null,pry:null,noiseSq:0,noiseT:0,t:0,act:0,pen:0,jmax:0,hist:[],lastS:-1,corners:0,cornerW:0,lastCorner:-9,dom:null,domT:-9,minG:9,trans:0,conn:0,bucketP:0,ev:[]}}
+function takeP(S){const v=S.bucketP;S.bucketP=0;return v}
 function feedScore(S,x,y,dt){
   if(!(dt>0))return;
   const a=dt/(1/(2*Math.PI*2)+dt);
@@ -546,7 +578,7 @@ function feedScore(S,x,y,dt){
   S.px=S.lx2;S.py=S.ly2;S.t+=dt;
   const g=Math.hypot(S.lx2,S.ly2),j=Math.hypot(S.jx,S.jy);
   if(g>0.1){                                                     // 加減速・旋回している時間だけで評価
-    S.act+=dt;S.pen+=Math.min(1,Math.max(0,(j-0.25)/0.95))*dt;if(j>S.jmax)S.jmax=j;
+    const pv=Math.min(1,Math.max(0,(j-0.25)/0.95));S.act+=dt;S.pen+=pv*dt;if(pv>S.bucketP)S.bucketP=pv;if(j>S.jmax)S.jmax=j;
   }
   if(S.t-S.lastS>=0.05){
     S.lastS=S.t;S.hist.push({t:S.t,jx:S.jx,jy:S.jy,j,g});
@@ -556,7 +588,7 @@ function feedScore(S,x,y,dt){
         const age=S.t-h.t;
         if(age<0.15||age>0.45||h.j<=0.3)continue;
         if((h.jx*S.jx+h.jy*S.jy)/(h.j*j)<Math.cos(110*Math.PI/180)){
-          S.corners++;S.cornerW+=Math.max(...S.hist.map(q=>q.g));S.lastCorner=S.t;break;
+          S.corners++;S.cornerW+=Math.max(...S.hist.map(q=>q.g));S.lastCorner=S.t;S.ev.push({t:S.t,type:'spike'});break;
         }
       }
     }
@@ -565,7 +597,7 @@ function feedScore(S,x,y,dt){
     const ax=Math.abs(S.lx2),ay=Math.abs(S.ly2),cls=ay>ax*1.2?'lon':ax>ay*1.2?'lat':'mix';
     if(cls==='mix')S.domT=S.t;
     else{
-      if(S.dom&&cls!==S.dom&&S.t-S.domT<1.5){S.trans++;if(S.minG>=0.08)S.conn++}
+      if(S.dom&&cls!==S.dom&&S.t-S.domT<1.5){S.trans++;if(S.minG>=0.08)S.conn++;else S.ev.push({t:S.t,type:'plus'})}
       S.dom=cls;S.domT=S.t;S.minG=9;
     }
   }else S.minG=Math.min(S.minG,g);
@@ -580,11 +612,16 @@ function scoreResult(S){
   return{total:Math.round((jerk+round)/2),jerk,round,spike,plus,trans:S.trans,conn:S.conn,corners:S.corners,
     jmax:+S.jmax.toFixed(2),noise:+Math.sqrt(S.noiseSq/Math.max(S.noiseT,1e-6)).toFixed(2),act:Math.round(S.act)};
 }
-function scoreRows(rows){
-  const S=newScorer();
-  for(let i=1;i<rows.length;i++)feedScore(S,rows[i][1],rows[i][2],rows[i][0]-rows[i-1][0]);
-  return scoreResult(S);
+function scoreSeries(rows){
+  const S=newScorer(),pj=[0],ev=[];let k=0;
+  for(let i=1;i<rows.length;i++){
+    feedScore(S,rows[i][1],rows[i][2],rows[i][0]-rows[i-1][0]);
+    pj.push(+takeP(S).toFixed(2));
+    for(;k<S.ev.length;k++)ev.push([i,S.ev[k].type]);
+  }
+  return{res:scoreResult(S),pen:{pj,ev}};
 }
+const scoreRows=rows=>scoreSeries(rows).res;
 function scoreHtml(sc){
   if(!sc)return '<p class="mcap">加減速や旋回が少ないため、採点できませんでした（合計5秒以上必要です）。</p>';
   const row=(l,v,sub)=>'<div class="sr"><span>'+l+'</span><b>'+v+'</b><small>'+sub+'</small></div>';
@@ -599,6 +636,7 @@ function loop(now){
   if(sensor){tx=sxv()*raw.x-off.x;ty=syv()*raw.y-off.y}
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
   if(rec&&scorer&&sensor)feedScore(scorer,tx,ty,dt);
+  if(liveS&&sensor)feedScore(liveS,tx,ty,dt);
   const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
   sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;
   const m=Math.hypot(sg.x,sg.y);
@@ -612,8 +650,13 @@ function loop(now){
   if(trail.length>40)trail.shift();
   if(now-lastS>=100){
     lastS=now;
-    hist.push({x:sg.x,y:-sg.y,m});if(hist.length>N)hist.shift();
-    if(rec)log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon]);
+    let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
+    hist.push({x:sg.x,y:-sg.y,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev});if(hist.length>N)hist.shift();
+    if(rec){
+      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon]);
+      logPen.push(scorer?+takeP(scorer).toFixed(2):0);
+      if(scorer)for(;recEvN<scorer.ev.length;recEvN++)logEv.push([log.length-1,scorer.ev[recEvN].type]);
+    }
   }
   if(!$('pm').hidden){
     $('mag').textContent=m.toFixed(2);
@@ -630,7 +673,7 @@ function loop(now){
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
   if(!$('pl').hidden){
-    if(gc.clientWidth)drawGraph(gx,gc.clientWidth,hist,false);
+    if(gc.clientWidth)drawPanels(gx,gc.clientWidth,hist,false);
   }
   if(V&&!$('vw').hidden)vframe(dt);
   requestAnimationFrame(loop);
