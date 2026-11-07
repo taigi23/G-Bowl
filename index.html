@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gメーター</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{--bg:#eef1f3;--fg:#12202e;--mut:#5f6f7e;--ring:#b8c2cb;--ball:#1f5eff;--peak:#e5484d;--panel:#fff;--btn:#12202e;--btnfg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a24;--fg:#e6edf3;--mut:#8ea0b1;--ring:#2c3d4d;--ball:#ffb020;--peak:#ff6b6b;--panel:#16232f;--btn:#e6edf3;--btnfg:#0f1a24}}
@@ -16,7 +16,7 @@ header{display:flex;justify-content:space-between;align-items:center;max-width:4
 nav{display:flex;gap:6px}
 .in,main{max-width:460px;margin:0 auto;padding:12px 16px 28px}
 h2{font-size:.95rem;margin:18px 0 6px}
-canvas{display:block;width:100%;background:var(--panel)}
+#c,#vc,#g,#vg{display:block;width:100%;background:var(--panel)}
 #c,#vc{aspect-ratio:1;border-radius:50%;touch-action:none}
 #vc{width:min(100%,320px);margin:8px auto}
 .bw{position:relative}
@@ -304,7 +304,9 @@ const gcol=m=>'hsl('+(210-210*Math.min(m/.6,1))+',85%,50%)';
 function makeMap(el){
   if(!window.L){el.innerHTML='<div class="mempty">地図を読み込めませんでした。ネットにつながっているか確認して、ページを再読み込みしてください。</div>';return null}
   const map=L.map(el,{preferCanvas:true,zoomControl:true,attributionControl:true}).setView([35.68,139.76],5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:'abc',attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+  let te=0;
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'})
+    .on('tileerror',()=>{if(++te===3)msg('地図の画像を読み込めません。電波の状態を確認してください。')}).addTo(map);
   const M={map,grp:L.layerGroup().addTo(map),
     start:L.circleMarker([0,0],{radius:7,color:'#fff',weight:2,fillColor:'#2ecc71',fillOpacity:1}),
     cur:L.circleMarker([0,0],{radius:8,color:'#fff',weight:3,fillColor:'#1f5eff',fillOpacity:1}),
