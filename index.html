@@ -101,6 +101,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <h2 style="margin-top:0">設定</h2>
 <div class="set"><span>警告音</span><input type="checkbox" id="snd" aria-label="警告音"></div>
 <div class="set"><span>制限速度超過で通知</span><input type="checkbox" id="over" aria-label="速度超過の通知"></div>
+<div class="set"><span>通知のタイミング <b>+<span id="mgv">10</span> km/h</b></span><input type="range" id="mg" min="10" max="50" step="5" aria-label="制限速度からの超過量"></div>
 <div class="set"><span>音が鳴り始めるG <b><span id="thrv">0.5</span> G</b></span><input type="range" id="thr" min="0" max="1" step="0.1" aria-label="音が鳴り始めるG"></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
@@ -112,14 +113,14 @@ const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:2,thr:.5,snd:true,over:true,fx:false,fy:false,v:4};
+let cfg={fc:2,thr:.5,snd:true,over:true,margin:10,fx:false,fy:false,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
-let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0;
+let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0;
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -133,7 +134,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   size();
 });
 // settings
-$('snd').checked=cfg.snd;$('over').checked=cfg.over;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
+$('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(10,+cfg.margin||10));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
 $('gear').onclick=()=>{
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
@@ -141,6 +142,7 @@ $('gear').onclick=()=>{
 $('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
 $('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
 $('over').onchange=e=>{cfg.over=e.target.checked;saveCfg()};
+$('mg').oninput=e=>{cfg.margin=+e.target.value;$('mgv').textContent=cfg.margin;saveCfg()};
 $('thr').oninput=e=>{cfg.thr=Math.round(+e.target.value*10)/10;$('thrv').textContent=cfg.thr.toFixed(1);saveCfg()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate();mirror(false,true)};
@@ -258,7 +260,7 @@ $('impf').onchange=async e=>{
   }catch(err){msg('CSVを読み込めませんでした。')}
 };
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -300,7 +302,7 @@ function maybeQuery(la,lo){
   limBusy=true;lastQ={la,lo,t:now};
   fetchLimit(la,lo).then(v=>{spdLim=v}).catch(()=>{spdLim=null}).finally(()=>{limBusy=false});
 }
-// 超過時に「ピピっ」。超えている間は4秒ごとに繰り返す
+// 超過時に「ピピっ」。1回の超過につき最大3回、4秒間隔
 function pipi(){
   if(!ac)return;
   [0,.18].forEach(d=>{
@@ -310,9 +312,12 @@ function pipi(){
   });
 }
 function checkOver(){
-  const sp=gps.sp,over=cfg.over&&sp!=null&&spdLim!=null&&sp>spdLim;
-  if(over){const now=performance.now();if(!overState||now-lastAlert>4000){pipi();lastAlert=now}}
-  overState=over;
+  const sp=gps.sp,over=cfg.over&&sp!=null&&spdLim!=null&&sp>spdLim+cfg.margin;
+  if(!over){overState=false;overCount=0;return}
+  if(!overState)overCount=0;          // 超過が始まったら回数をリセット
+  overState=true;
+  const now=performance.now();
+  if(overCount<3&&now-lastAlert>4000){pipi();lastAlert=now;overCount++}
 }
 // 連続音: Gが大きくなるほど音量が上がる（しきい値から +1G で最大）
 let tone=null;
