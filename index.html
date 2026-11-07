@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.5.0 (2026-11-07) 録画を追加。カメラ表示中に「記録開始」でGのログと同時に録画（映像＋Gボール＋数値＋日時＋ログ名を合成）。
+                     動画はログと同じ日時の名前で「ファイル」アプリに保存。ログ再生時に「動画を選ぶ」で同期再生（ずれ調整・長さ／名前の確認つき）
   1.4.0 (2026-11-07) カメラ表示を追加。カメラ映像の上にGボール・数値・制限速度を重ねて表示（「カメラ」ボタン）
   1.3.1 (2026-11-07) 修正: 採点機能より前に保存したログがあると起動時にエラーになり、Gボールの目盛りが出ずセンサーも開始できなかった
   1.3.0 (2026-11-07) 円内の最大G表示を削除。ログのグラフを左右G・前後G・車速・減点の4段に分割（減点は時系列で表示）
@@ -73,7 +75,9 @@ li small{display:block;color:var(--mut)}
 #camg{font-size:2.4rem;font-weight:700;letter-spacing:-.02em}
 #camd,#cams{font-size:.8rem}
 #camx{position:absolute;left:12px;top:calc(12px + env(safe-area-inset-top,0px))}
-#camst{position:absolute;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+#camb{position:absolute;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+#camr{color:#ff6b6b;font-weight:700;font-size:.85rem}
+#vv{display:block;width:100%;border-radius:10px;margin-top:8px;background:#000}
 #vw{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5;padding-top:env(safe-area-inset-top,0px)}
 #vr{text-align:center;font-variant-numeric:tabular-nums;margin:4px 0}
 input[type=range]{width:100%}
@@ -105,6 +109,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
 <button id="cam">カメラ</button>
+<button id="vdl" hidden>動画を保存</button>
 </div>
 </section>
 <section id="pl" hidden>
@@ -120,11 +125,15 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </main>
 <div id="vw" hidden><div class="in">
 <div class="btns" style="align-items:center"><button id="vx">← 戻る</button><b id="vn"></b></div>
+<video id="vv" playsinline muted hidden></video>
 <canvas id="vc" aria-label="再生中のGボール"></canvas>
 <p id="vr"></p>
 <div id="vsc"></div>
 <div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></div>
 <input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
+<div class="btns"><button id="vvid">動画を選ぶ</button><input type="file" id="vvf" accept="video/*" hidden></div>
+<p class="mcap" id="vvst"></p>
+<div class="set" id="vadjw" hidden><span>動画のずれ調整 <b><span id="vadjv">0.0</span> 秒</b></span><input type="range" id="vadj" min="-5" max="5" step="0.1" value="0" aria-label="動画のずれ調整"></div>
 <div id="vmw"><div id="vm" aria-label="ログの走行マップ"></div>
 <p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="vall">全体表示</button></div></div>
@@ -134,10 +143,11 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div id="camw" hidden>
 <video id="camv" playsinline muted autoplay aria-label="カメラ映像"></video>
 <canvas id="camc" aria-label="Gボール"></canvas>
-<div id="camt"><div><b id="camg">0.00</b> G</div><div id="camd"></div><div id="cams"></div></div>
+<div id="camt"><div><b id="camg">0.00</b> G</div><div id="camd"></div><div id="cams"></div><div id="camr"></div></div>
 <button id="camx">✕ 閉じる</button>
-<button class="p" id="camst">開始</button>
+<div id="camb"><button id="camdl" hidden>動画を保存</button><button id="camrec">記録開始</button><button class="p" id="camst">開始</button></div>
 </div>
+<canvas id="camrc" aria-hidden="true" style="position:fixed;left:-10000px;top:0;width:10px;height:10px"></canvas>
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
 <div class="set"><span>警告音</span><input type="checkbox" id="snd" aria-label="警告音"></div>
@@ -154,7 +164,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.4.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.5.0',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -249,15 +259,16 @@ $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if
 $('mall').onclick=()=>{if(LM)fitAll(LM,trk)};
 // recording and saved logs
 const persist=()=>{try{localStorage.setItem('gm-logs',JSON.stringify(saved));return true}catch(e){return false}};
-function saveLog(sc){
+function saveLog(sc,vm){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
   const rows=log.map(r=>[q(r[0],1),q(r[1],3),q(r[2],3),q(r[3],3),q(r[4],1),q(r[5],6),q(r[6],6)]);
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const r=addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()});
+  const r=addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()},vm);
   msg(r.ok?'ログを保存しました（'+rows.length+'件）'+(r.L.score?'　スコア '+r.L.score.total+'点':'')+'。「ログ」タブから再生できます。':'保存できませんでした（容量がいっぱいです）。古いログを削除してください。');
 }
-function addLog(rows,name,sc,pen){
+function addLog(rows,name,sc,pen,vm){
   const L={id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+rows.reduce((a,r)=>Math.max(a,r[3]),0).toFixed(2),gps:rows.some(r=>r[5]!=null),score:sc||scoreRows(rows),pen:pen||null,rows};
+  if(vm){L.vid=vm.vid;L.voff=vm.voff}
   saved.unshift(L);
   if(persist()){renderList();return{L,ok:true}}
   saved.shift();return{L,ok:false};
@@ -283,16 +294,27 @@ function parseCsv(t){
   });
   return rows;
 }
-$('rec').onclick=e=>{
-  if(!rec){rec=true;log=[];logPen=[];logEv=[];recEvN=0;t0=performance.now();scorer=newScorer();e.target.textContent='記録停止';e.target.classList.add('on');msg('記録中です（1秒に10回）。');return}
-  rec=false;e.target.textContent='記録開始';e.target.classList.remove('on');
+$('rec').onclick=()=>{
+  const b=$('rec');
+  if(!rec){
+    rec=true;log=[];logPen=[];logEv=[];recEvN=0;t0=performance.now();recDate=new Date();scorer=newScorer();b.textContent='記録停止';b.classList.add('on');
+    pendingVid=null;$('vdl').hidden=true;$('camdl').hidden=true;
+    const vOk=startVid();
+    msg('記録中です（1秒に10回）'+(vOk?'。カメラ映像も録画しています':camOn?'。この環境では録画できないため、Gのログだけ記録します':'')+'。');return;
+  }
+  rec=false;b.textContent='記録開始';b.classList.remove('on');
+  const vp=stopVid(),vo=vp&&vStart!=null?+((vStart-t0)/1000).toFixed(2):0;
   if(!log.length){msg('記録が空でした。');return}
   const sc=scorer?scoreResult(scorer):null;
-  if(confirm('記録を保存しますか？\n'+log.length+'件（約'+Math.round(log[log.length-1][0])+'秒）'+(sc?'\nスコア '+sc.total+'点（ジャーク '+sc.jerk+'・丸み '+sc.round+'）':'')))saveLog(sc);else msg('記録を破棄しました。');
+  if(confirm('記録を保存しますか？\n'+log.length+'件（約'+Math.round(log[log.length-1][0])+'秒）'+(sc?'\nスコア '+sc.total+'点（ジャーク '+sc.jerk+'・丸み '+sc.round+'）':'')+(vp?'\n録画した動画は「ファイル」アプリに保存します':''))){
+    const vname=vp?stampName(recDate)+mrExt:null;
+    saveLog(sc,vp?{vid:vname,voff:vo}:null);
+    if(vp)vp.then(bl=>gotVid(bl,vname));
+  }else msg('記録を破棄しました。');
 };
 function logScore(s){try{if(s.score===undefined)s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
 function renderList(){
-  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+(logScore(s)?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
+  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+(s.vid?'　動画あり':'')+(logScore(s)?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
 }
 $('list').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
@@ -330,6 +352,8 @@ async function openCam(){
 }
 function closeCam(){
   camOn=false;$('camw').hidden=true;
+  if(mr&&mr.state!=='inactive'){mr.stop();msg('カメラを閉じたので録画を止めました。Gのログの記録は続いています。')}
+  mr=null;
   if(camS){camS.getTracks().forEach(t=>t.stop());camS=null}
   $('camv').srcObject=null;
 }
@@ -358,7 +382,83 @@ function drawCam(){
   $('camd').textContent='左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　最大 '+peak.toFixed(2);
   $('cams').textContent=(gps.sp==null?'--':Math.round(gps.sp))+' km/h　制限 '+limTxt();
   $('camst').textContent=running?'停止':'開始';
+  const rb=$('camrec');rb.textContent=rec?'記録停止':'記録開始';rb.classList.toggle('on',rec);
+  $('camr').textContent=mr&&vStart!=null?'● 録画中 '+fmtT((performance.now()-vStart)/1000):rec?'● 記録中（Gのログのみ）':'';
+  if(mr)drawRec();
 }
+// ===== 録画: カメラ映像＋Gボール＋数値＋日時を1枚に合成して録画し、「ファイル」アプリに保存 =====
+const recCv=$('camrc'),recCx=recCv.getContext('2d');
+let mr=null,mrP=null,mrExt='.mp4',vStart=null,recDate=null,pendingVid=null;
+const pad2=n=>String(n).padStart(2,'0');
+const stampName=d=>'gmeter-'+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate())+'-'+pad2(d.getHours())+pad2(d.getMinutes());
+const fmtT=s=>Math.floor(s/60)+':'+pad2(Math.floor(s%60));
+function vidMime(){
+  if(!window.MediaRecorder)return null;
+  for(const m of ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}
+  return '';
+}
+function startVid(){
+  if(!camOn||!recCv.captureStream)return false;
+  const mime=vidMime();if(mime===null)return false;
+  const v=$('camv'),vw=v.videoWidth||1280,vh=v.videoHeight||720,s=Math.min(1,1280/Math.max(vw,vh));
+  recCv.width=Math.round(vw*s/2)*2;recCv.height=Math.round(vh*s/2)*2;
+  drawRec();
+  let st;
+  try{
+    st=recCv.captureStream(30);
+    const o={videoBitsPerSecond:2500000};if(mime)o.mimeType=mime;
+    mr=new MediaRecorder(st,o);
+  }catch(e){mr=null;return false}
+  const chunks=[],type=(mr.mimeType||mime||'video/mp4').split(';')[0];
+  mrExt=/webm/.test(type)?'.webm':'.mp4';
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  mrP=new Promise(res=>{mr.onstop=()=>{st.getTracks().forEach(t=>t.stop());res(chunks.length?new Blob(chunks,{type}):null)}});
+  mr.onstart=()=>{vStart=performance.now()};
+  try{mr.start(1000)}catch(e){mr=null;mrP=null;return false}
+  vStart=performance.now();
+  return true;
+}
+function stopVid(){if(mr&&mr.state!=='inactive')mr.stop();mr=null;const p=mrP;mrP=null;return p}
+function drawRec(){
+  const W=recCv.width,H=recCv.height,c=recCx,v=$('camv'),u=Math.min(W,H)/100;
+  try{c.drawImage(v,0,0,W,H)}catch(e){c.fillStyle='#000';c.fillRect(0,0,W,H)}
+  const bs=Math.round(Math.min(W,H)*.42),bx=Math.round(u*3),by=H-bs-Math.round(u*3);
+  c.fillStyle='rgba(0,0,0,.35)';c.beginPath();c.arc(bx+bs/2,by+bs/2,bs/2,0,7);c.fill();
+  if(camc.width)c.drawImage(camc,bx,by,bs,bs);
+  const d=new Date(),f='-apple-system,"Hiragino Sans",system-ui,sans-serif';
+  c.fillStyle='#fff';c.shadowColor='rgba(0,0,0,.9)';c.shadowBlur=u*.8;
+  c.textAlign='right';
+  c.font='700 '+Math.round(u*9)+'px '+f;c.fillText(Math.hypot(sg.x,sg.y).toFixed(2)+' G',W-u*3,u*11);
+  c.font=Math.round(u*3.6)+'px '+f;
+  c.fillText('左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　最大 '+peak.toFixed(2),W-u*3,u*16.5);
+  c.fillText((gps.sp==null?'--':Math.round(gps.sp))+' km/h　制限 '+limTxt(),W-u*3,u*21.5);
+  c.textAlign='left';
+  c.fillText(d.getFullYear()+'/'+pad2(d.getMonth()+1)+'/'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),u*3,u*6);
+  c.fillText((recDate?stampName(recDate):'')+'　ログ '+(rec?((performance.now()-t0)/1000).toFixed(1):'--')+'秒',u*3,u*11);
+  c.shadowBlur=0;
+}
+function dl(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+}
+async function shareVid(){
+  if(!pendingVid)return;
+  const {blob,name}=pendingVid;
+  try{
+    const f=new File([blob],name,{type:blob.type});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}
+  }catch(e){if(e&&e.name==='AbortError')return}
+  dl(blob,name);
+}
+function gotVid(blob,name){
+  if(!blob){msg('録画データが空でした。動画は保存されていません（Gのログは保存済みです）。');return}
+  pendingVid={blob,name};$('vdl').hidden=false;$('camdl').hidden=false;
+  dl(blob,name);
+  msg('ログと動画「'+name+'」を保存しました。iPhoneでは確認が出たら「ダウンロード」を押すと、「ファイル」アプリの「ダウンロード」フォルダに入ります。保存されていないときは「動画を保存」を押して、共有メニューから「"ファイル"に保存」を選んでください。');
+}
+$('camrec').onclick=()=>$('rec').onclick();
+$('vdl').onclick=shareVid;$('camdl').onclick=shareVid;
 // gps
 function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null}
 function startGps(){
@@ -586,7 +686,9 @@ function openL(L){
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
   const pts=rows.map((r,i)=>({x:r[1],y:r[2],m:r[3],sp:r[4],pj:pen.pj[i]||0,ev:null}));
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
-  V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0};
+  vClearVid();
+  V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null};
+  $('vvst').textContent=L.vid?'このログの動画：'+L.vid+'　「動画を選ぶ」→「ファイルを選択」でファイルアプリから選ぶと、同期して再生します。':'「動画を選ぶ」で録画した動画を選ぶと、同期して再生します。';
   $('vn').textContent=L.name;$('vsc').innerHTML=scoreHtml(L.score||(L.score=scoreRows(L.rows)));$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
   $('vw').hidden=false;
   const has=tr.length>0;$('vmw').hidden=!has;$('vnogps').hidden=has;
@@ -604,21 +706,60 @@ function vseek(i){
   for(let j=V.i+1;j<=i;j++){const r=V.rows[j];if(r[3]>V.peak)V.peak=r[3];if(r[3]>.02)envAdd(V.env,r[1],-r[2],r[3])}
   V.i=i;
 }
-$('vx').onclick=()=>{$('vw').hidden=true;V=null};
+// 動画の同期再生: 動画の時刻 = ログの時刻 − (録画開始のずれ + 手動調整)
+function vClearVid(){
+  const vv=$('vv');vv.pause();vv.removeAttribute('src');try{vv.load()}catch(e){}vv.hidden=true;
+  if(V&&V.url){URL.revokeObjectURL(V.url);V.url=null}
+  if(V)V.vid=false;
+  $('vadjw').hidden=true;$('vadj').value=0;$('vadjv').textContent='0.0';
+}
+const vOff=()=>V?(V.L.voff||0)+V.adj:0;
+function vSync(){
+  if(!V||!V.vid)return;const vv=$('vv');
+  let t=Math.max(0,V.vt-vOff());if(isFinite(vv.duration))t=Math.min(t,vv.duration);
+  try{vv.currentTime=t}catch(e){}
+}
+function vPlayState(){
+  if(!V||!V.vid)return;const vv=$('vv');vSync();
+  if(V.play&&V.sp<=2){vv.playbackRate=V.sp;vv.play().catch(()=>{})}else vv.pause();
+}
+$('vx').onclick=()=>{vClearVid();$('vw').hidden=true;V=null};
 $('vp').onclick=()=>{
   if(!V)return;
   if(!V.play&&V.i>=V.rows.length-1){vseek(0);V.vt=V.rows[0][0]}
   V.play=!V.play;$('vp').textContent=V.play?'⏸ 一時停止':'▶ 再生';
+  vPlayState();
 };
-$('vs').onchange=e=>{if(V)V.sp=+e.target.value};
-$('vk').oninput=e=>{if(V){const i=+e.target.value;vseek(i);V.vt=V.rows[i][0]}};
+$('vs').onchange=e=>{if(V){V.sp=+e.target.value;vPlayState()}};
+$('vk').oninput=e=>{if(V){const i=+e.target.value;vseek(i);V.vt=V.rows[i][0];vSync()}};
+$('vadj').oninput=e=>{if(V){V.adj=+e.target.value;$('vadjv').textContent=(V.adj>0?'+':'')+V.adj.toFixed(1);vSync()}};
+$('vvid').onclick=()=>$('vvf').click();
+$('vvf').onchange=e=>{
+  const f=e.target.files[0];e.target.value='';if(!f||!V)return;
+  const vv=$('vv');
+  if(V.url)URL.revokeObjectURL(V.url);
+  V.play=false;$('vp').textContent='▶ 再生';
+  vv.onloadedmetadata=()=>{
+    if(!V)return;
+    const ld=V.rows[V.rows.length-1][0]-(V.L.voff||0),d=vv.duration,notes=[];
+    if(V.L.vid&&f.name!==V.L.vid)notes.push('ファイル名がこのログの動画（'+V.L.vid+'）と違います');
+    if(isFinite(d)&&Math.abs(d-ld)>3)notes.push('動画の長さ（'+Math.round(d)+'秒）がログ（'+Math.round(ld)+'秒）と違います。別の走行の動画かもしれません');
+    $('vvst').textContent=notes.length?'⚠ '+notes.join('。')+'。':'動画を読み込みました：'+f.name+'　▶ 再生で同期して動きます。';
+    vSync();
+  };
+  vv.onerror=()=>{$('vvst').textContent='この動画は再生できませんでした：'+f.name};
+  V.url=URL.createObjectURL(f);vv.src=V.url;vv.hidden=false;V.vid=true;$('vadjw').hidden=false;
+};
 function vframe(dt){
   const n=V.rows.length;
   if(V.play){
-    V.vt+=dt*V.sp;let i=V.i;
+    const vv=V.vid?$('vv'):null;
+    if(vv&&V.sp<=2&&!vv.paused&&!vv.seeking&&!vv.ended)V.vt=vv.currentTime+vOff();   // 2×以下は動画の時刻に合わせる
+    else{V.vt+=dt*V.sp;if(vv&&V.sp>2&&performance.now()-(V.vsk||0)>250){V.vsk=performance.now();vSync()}}
+    let i=V.i;
     while(i<n-1&&V.rows[i+1][0]<=V.vt)i++;
     if(i!==V.i){vseek(i);$('vk').value=i}
-    if(i>=n-1){V.play=false;$('vp').textContent='▶ 再生'}
+    if(i>=n-1){V.play=false;$('vp').textContent='▶ 再生';if(vv)vv.pause()}
   }
   const r=V.rows[V.i],tm=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
   vseek(V.i);
