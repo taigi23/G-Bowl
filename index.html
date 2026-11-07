@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gメーター</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{--bg:#eef1f3;--fg:#12202e;--mut:#5f6f7e;--ring:#b8c2cb;--ball:#1f5eff;--peak:#e5484d;--panel:#fff;--btn:#12202e;--btnfg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a24;--fg:#e6edf3;--mut:#8ea0b1;--ring:#2c3d4d;--ball:#ffb020;--peak:#ff6b6b;--panel:#16232f;--btn:#e6edf3;--btnfg:#0f1a24}}
@@ -21,7 +23,9 @@ canvas{display:block;width:100%;background:var(--panel)}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
 #g,#vg{height:120px;border-radius:10px;margin-top:10px}
-#mp,#vm{height:220px;border-radius:10px;margin-top:10px}
+#mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
+.mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
+.mempty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut);font-size:.85rem;text-align:center;padding:0 12px}
 .big{text-align:center;margin:12px 0 4px;font-variant-numeric:tabular-nums}
 .big b{font-size:3.4rem;letter-spacing:-.02em}
 .big span{color:var(--mut);margin-left:4px}
@@ -71,8 +75,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </section>
 <section id="pl" hidden>
 <canvas id="g" aria-label="Gのグラフ"></canvas>
-<canvas id="mp" aria-label="走行マップ"></canvas>
-<div class="btns"><button id="clr">軌跡を消す</button></div>
+<div id="mp" aria-label="走行マップ"></div>
+<p class="mcap">緑の丸＝開始　線の色＝G（青→赤）　ピンチで拡大・縮小</p>
+<div class="btns"><button id="mfol">現在地</button><button id="mall">全体表示</button><button id="clr">軌跡を消す</button></div>
 <h2>保存したログ</h2>
 <div class="btns" style="margin:0 0 6px"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
 <ul id="list"></ul>
@@ -86,7 +91,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></div>
 <input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
 <canvas id="vg" aria-label="ログのグラフ"></canvas>
-<canvas id="vm" aria-label="ログの走行マップ"></canvas>
+<div id="vm" aria-label="ログの走行マップ"></div>
+<p class="mcap">緑の丸＝開始　線の色＝G（青→赤）　ピンチで拡大・縮小</p>
+<div class="btns"><button id="vall">全体表示</button></div>
 </div></div>
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
@@ -97,25 +104,28 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d'),mp=$('mp'),mpc=mp.getContext('2d');
-const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d'),vm=$('vm'),vmx=vm.getContext('2d');
+const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
+const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:5,thr:.5,snd:true,fx:false,fy:false};
-try{Object.assign(cfg,JSON.parse(localStorage.getItem('gm-set')||'{}'))}catch(e){}
+let cfg={fc:5,thr:.5,snd:true,fx:false,fy:true,v:2};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
+try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==2){st.fy=true;st.v=2}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,drag=null,S=.4;
-let curM=0,lastT=0,trk=[],org=null,mapDirty=true,env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
+let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,lastBeep=0,V=null,saved=[];
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,120);fit(mp,220);fit(vc);fit(vg,120);fit(vm,220);mapDirty=true}
+function size(){fit(cv);fit(gc,120);fit(vc);fit(vg,120);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
+let LM=null,VM=null;
 addEventListener('resize',size);size();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
-  $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';size();
+  $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';
+  if(b.dataset.t==='l')liveMap();
+  size();
 });
 // settings
 $('snd').checked=cfg.snd;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
@@ -158,7 +168,9 @@ $('start').onclick=async()=>{
 };
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
-$('clr').onclick=()=>{trk=[];org=null;mapDirty=true};
+$('clr').onclick=()=>{trk=[];if(LM){LM.grp.clearLayers();LM.cur.remove();LM.start.remove()}};
+$('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if(p)LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))};
+$('mall').onclick=()=>{if(LM)fitAll(LM,trk)};
 // recording and saved logs
 const persist=()=>{try{localStorage.setItem('gm-logs',JSON.stringify(saved));return true}catch(e){return false}};
 function saveLog(){
@@ -232,9 +244,9 @@ function startGps(){
     const c=p.coords;
     gps={sp:c.speed==null?null:c.speed*3.6,lat:c.latitude,lon:c.longitude};
     if(c.accuracy<=100){
-      if(!org)org={la:c.latitude,lo:c.longitude};
-      trk.push({x:(c.longitude-org.lo)*111320*Math.cos(org.la*Math.PI/180),y:(c.latitude-org.la)*110540,m:curM});
-      curM=0;if(trk.length>5000)trk.shift();mapDirty=true;
+      const q={la:c.latitude,lo:c.longitude,m:curM};
+      trk.push(q);curM=0;if(trk.length>20000)trk.shift();
+      if(LM)liveAdd(q,trk[trk.length-2]);
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
 }
@@ -287,46 +299,55 @@ function drawGraph(c,w,pts,full,cur){
   c.fillStyle=mut;c.font='10px system-ui';c.textAlign='left';
   c.fillText(full?'細線：左右・前後　太線：合成G　縦線：再生位置':'過去30秒　細線：左右・前後　太線：合成G　点線：警告ライン',4,11);
 }
-function drawMap(c,w,tr,cur){
-  const h=220,fg=css('--fg'),mut=css('--mut');
-  c.clearRect(0,0,w,h);c.font='12px system-ui';c.fillStyle=mut;
-  if(!tr.length){c.textAlign='center';c.fillText('GPSの軌跡がありません',w/2,h/2);return}
-  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
-  tr.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
-  const pad=28,s=Math.min((w-2*pad)/Math.max(x1-x0,30),(h-2*pad)/Math.max(y1-y0,30)),cx=(x0+x1)/2,cy=(y0+y1)/2;
-  const X=p=>w/2+(p.x-cx)*s,Y=p=>h/2-(p.y-cy)*s;
-  c.lineWidth=4;c.lineCap='round';c.lineJoin='round';
-  for(let i=1;i<tr.length;i++){
-    c.strokeStyle='hsl('+(210-210*Math.min(tr[i].m/.6,1))+',85%,55%)';
-    c.beginPath();c.moveTo(X(tr[i-1]),Y(tr[i-1]));c.lineTo(X(tr[i]),Y(tr[i]));c.stroke();
-  }
-  const dot=(p,col)=>{c.fillStyle=col;c.beginPath();c.arc(X(p),Y(p),6,0,7);c.fill();c.strokeStyle=fg;c.lineWidth=2;c.stroke()};
-  dot(tr[0],'#2ecc71');dot(cur||tr[tr.length-1],css('--ball'));
-  const len=[10,20,50,100,200,500,1000,2000,5000,10000].filter(v=>v*s<=w/3).pop()||10;
-  c.strokeStyle=fg;c.lineWidth=2;c.beginPath();c.moveTo(12,h-14);c.lineTo(12+len*s,h-14);c.stroke();
-  c.fillStyle=fg;c.textAlign='left';c.fillText(len>=1000?len/1000+'km':len+'m',12,h-20);
-  c.fillStyle=mut;c.fillText('緑＝開始　色＝G（青→赤）',8,16);
-  c.fillStyle=fg;c.textAlign='right';c.fillText('N↑',w-10,16);
+const gcol=m=>'hsl('+(210-210*Math.min(m/.6,1))+',85%,50%)';
+function makeMap(el){
+  if(!window.L){el.innerHTML='<div class="mempty">地図を読み込めませんでした。ネットにつながっているか確認して、ページを再読み込みしてください。</div>';return null}
+  const map=L.map(el,{preferCanvas:true,zoomControl:true,attributionControl:true}).setView([35.68,139.76],5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:'abc',attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+  const M={map,grp:L.layerGroup().addTo(map),
+    start:L.circleMarker([0,0],{radius:7,color:'#fff',weight:2,fillColor:'#2ecc71',fillOpacity:1}),
+    cur:L.circleMarker([0,0],{radius:8,color:'#fff',weight:3,fillColor:'#1f5eff',fillOpacity:1}),
+    follow:true};
+  map.on('dragstart',()=>{M.follow=false});
+  return M;
+}
+function seg(M,a,b){L.polyline([[a.la,a.lo],[b.la,b.lo]],{color:gcol(b.m),weight:5,opacity:.9,lineCap:'round'}).addTo(M.grp)}
+function fitAll(M,tr){
+  if(!tr.length)return;
+  if(tr.length===1){M.map.setView([tr[0].la,tr[0].lo],16);return}
+  M.map.fitBounds(L.latLngBounds(tr.map(p=>[p.la,p.lo])),{padding:[24,24],maxZoom:17});
+}
+function liveMap(){
+  if(LM||!(LM=makeMap($('mp'))))return;
+  for(let i=1;i<trk.length;i++)seg(LM,trk[i-1],trk[i]);
+  if(trk.length){LM.start.setLatLng([trk[0].la,trk[0].lo]).addTo(LM.map);const p=trk[trk.length-1];LM.cur.setLatLng([p.la,p.lo]).addTo(LM.map);fitAll(LM,trk)}
+}
+function liveAdd(q,prev){
+  if(prev)seg(LM,prev,q);else{LM.start.setLatLng([q.la,q.lo]).addTo(LM.map);LM.map.setView([q.la,q.lo],16)}
+  LM.cur.setLatLng([q.la,q.lo]).addTo(LM.map);
+  if(LM.follow&&!$('pl').hidden)LM.map.panTo([q.la,q.lo],{animate:false});
 }
 // viewer
 function openL(L){
   if(!L||!L.rows.length)return;
-  const rows=L.rows;let o=null,mx=0,last=null;const tr=[],cur=[];
+  const rows=L.rows;let mx=0,last=null;const tr=[],cur=[];
   rows.forEach(r=>{
     mx=Math.max(mx,r[3]);
-    if(r[5]!=null){
-      if(!o)o={la:r[5],lo:r[6]};
-      if(!last||last.la!==r[5]||last.lo!==r[6]){
-        const p={x:(r[6]-o.lo)*111320*Math.cos(o.la*Math.PI/180),y:(r[5]-o.la)*110540,m:mx};
-        tr.push(p);mx=0;last={la:r[5],lo:r[6],p};
-      }
-    }
-    cur.push(last?last.p:null);
+    if(r[5]!=null&&r[6]!=null&&(!last||last.la!==r[5]||last.lo!==r[6])){last={la:r[5],lo:r[6],m:mx};tr.push(last);mx=0}
+    cur.push(last);
   });
   V={rows,pts:rows.map(r=>({x:r[1],y:r[2],m:r[3]})),trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0};
   $('vn').textContent=L.name;$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
-  $('vw').hidden=false;size();vseek(0);
+  $('vw').hidden=false;
+  if(!VM)VM=makeMap($('vm'));
+  size();vseek(0);
+  if(VM){
+    VM.grp.clearLayers();VM.cur.remove();VM.start.remove();V.mk=null;
+    for(let i=1;i<tr.length;i++)seg(VM,tr[i-1],tr[i]);
+    if(tr.length){VM.start.setLatLng([tr[0].la,tr[0].lo]).addTo(VM.map);fitAll(VM,tr)}
+  }
 }
+$('vall').onclick=()=>{if(V&&VM)fitAll(VM,V.trk)};
 function vseek(i){
   if(i<V.i){V.env.fill(0);V.peak=0;V.i=-1}
   for(let j=V.i+1;j<=i;j++){const r=V.rows[j];if(r[3]>V.peak)V.peak=r[3];if(r[3]>.02)envAdd(V.env,r[1],-r[2],r[3])}
@@ -352,7 +373,8 @@ function vframe(dt){
   vseek(V.i);
   drawBall(vc,vcx,{x:r[1],y:-r[2],S:nice(V.peak),peak:V.peak,env:V.env,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:q[1],y:-q[2]}))});
   if(vg.clientWidth)drawGraph(vgx,vg.clientWidth,V.pts,true,V.i);
-  if(vm.clientWidth)drawMap(vmx,vm.clientWidth,V.trk,V.cur[V.i]);
+  const cp=V.cur[V.i];
+  if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map)}
   $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h');
 }
 // main loop
@@ -386,7 +408,6 @@ function loop(now){
   }
   if(!$('pl').hidden){
     if(gc.clientWidth)drawGraph(gx,gc.clientWidth,hist,false);
-    if(mapDirty&&mp.clientWidth){drawMap(mpc,mp.clientWidth,trk,null);mapDirty=false}
   }
   if(V&&!$('vw').hidden)vframe(dt);
   requestAnimationFrame(loop);
