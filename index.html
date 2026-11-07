@@ -29,7 +29,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .big{text-align:center;margin:12px 0 4px;font-variant-numeric:tabular-nums}
 .big b{font-size:3.4rem;letter-spacing:-.02em}
 .big span{color:var(--mut);margin-left:4px}
-.row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;font-variant-numeric:tabular-nums}
+.row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0;font-variant-numeric:tabular-nums}
 .row div{background:var(--panel);border-radius:10px;padding:7px 8px}
 .row small{display:block;color:var(--mut);font-size:.68rem}
 .row strong{font-size:1rem}
@@ -67,6 +67,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div><small>前後</small><strong id="gy">0.00</strong></div>
 <div><small>最大G</small><strong id="pk">0.00</strong></div>
 <div><small>km/h</small><strong id="sp">--</strong></div>
+<div><small>制限</small><strong id="lim">--</strong></div>
 </div>
 <div class="btns">
 <button class="p" id="start">開始</button>
@@ -99,6 +100,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
 <div class="set"><span>警告音</span><input type="checkbox" id="snd" aria-label="警告音"></div>
+<div class="set"><span>制限速度超過で通知</span><input type="checkbox" id="over" aria-label="速度超過の通知"></div>
 <div class="set"><span>音が鳴り始めるG <b><span id="thrv">0.5</span> G</b></span><input type="range" id="thr" min="0" max="1" step="0.1" aria-label="音が鳴り始めるG"></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
@@ -110,13 +112,14 @@ const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:2,thr:.5,snd:true,fx:false,fy:false,v:4};
+let cfg={fc:2,thr:.5,snd:true,over:true,fx:false,fy:false,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
+let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0;
 try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -130,13 +133,14 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   size();
 });
 // settings
-$('snd').checked=cfg.snd;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
+$('snd').checked=cfg.snd;$('over').checked=cfg.over;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
 $('gear').onclick=()=>{
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
 $('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
 $('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
+$('over').onchange=e=>{cfg.over=e.target.checked;saveCfg()};
 $('thr').oninput=e=>{cfg.thr=Math.round(+e.target.value*10)/10;$('thrv').textContent=cfg.thr.toFixed(1);saveCfg()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate();mirror(false,true)};
@@ -254,7 +258,7 @@ $('impf').onchange=async e=>{
   }catch(err){msg('CSVを読み込めませんでした。')}
 };
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null}}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -265,8 +269,50 @@ function startGps(){
       const q={la:c.latitude,lo:c.longitude,m:curM};
       trk.push(q);curM=0;if(trk.length>20000)trk.shift();
       if(LM)liveAdd(q,trk[trk.length-2]);
+      maybeQuery(c.latitude,c.longitude);
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
+}
+// 制限速度: OpenStreetMapのmaxspeedを、現在地の近くの道路から取得
+function parseLimit(v){
+  const m=/^(\d+)\s*(km\/h|kmh|mph)?$/i.exec(String(v||'').trim());
+  if(!m)return null;
+  let n=+m[1];if(m[2]&&m[2].toLowerCase()==='mph')n=Math.round(n*1.609);
+  return n>0&&n<=200?n:null;
+}
+async function fetchLimit(la,lo){
+  const q='[out:json][timeout:5];way(around:30,'+la+','+lo+')[highway][maxspeed];out tags center;';
+  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
+  if(!r.ok)throw new Error('http');
+  const j=await r.json();
+  let best=null,bd=1e9;
+  (j.elements||[]).forEach(e=>{
+    const v=parseLimit(e.tags&&e.tags.maxspeed);if(v==null||!e.center)return;
+    const d=Math.hypot((e.center.lon-lo)*111320*Math.cos(la*Math.PI/180),(e.center.lat-la)*110540);
+    if(d<bd){bd=d;best=v}
+  });
+  return best;
+}
+function maybeQuery(la,lo){
+  const now=Date.now();
+  if(limBusy||(lastQ&&now-lastQ.t<5000))return;
+  if(lastQ&&Math.hypot((lo-lastQ.lo)*111320*Math.cos(la*Math.PI/180),(la-lastQ.la)*110540)<40)return;
+  limBusy=true;lastQ={la,lo,t:now};
+  fetchLimit(la,lo).then(v=>{spdLim=v}).catch(()=>{spdLim=null}).finally(()=>{limBusy=false});
+}
+// 超過時に「ピピっ」。超えている間は4秒ごとに繰り返す
+function pipi(){
+  if(!ac)return;
+  [0,.18].forEach(d=>{
+    const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();
+    o.frequency.value=1400;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.35,t+.01);g.gain.linearRampToValueAtTime(0,t+.12);
+    o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.14);
+  });
+}
+function checkOver(){
+  const sp=gps.sp,over=cfg.over&&sp!=null&&spdLim!=null&&sp>spdLim;
+  if(over){const now=performance.now();if(!overState||now-lastAlert>4000){pipi();lastAlert=now}}
+  overState=over;
 }
 // 連続音: Gが大きくなるほど音量が上がる（しきい値から +1G で最大）
 let tone=null;
@@ -423,6 +469,7 @@ function loop(now){
   S=nice(peak);
   if(m>.02)envAdd(env,sg.x,sg.y,m);
   setVol(m);
+  checkOver();
   trail.push({x:sg.x,y:sg.y});
   if(trail.length>40)trail.shift();
   if(now-lastS>=100){
@@ -436,6 +483,8 @@ function loop(now){
     $('gy').textContent=(-sg.y).toFixed(2);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
+    $('lim').textContent=spdLim==null?'--':spdLim;
+    $('sp').style.color=overState?css('--peak'):'';
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
   if(!$('pl').hidden){
