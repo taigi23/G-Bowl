@@ -17,6 +17,9 @@ h2{font-size:.95rem;margin:18px 0 6px}
 canvas{display:block;width:100%;background:var(--panel)}
 #c,#vc{aspect-ratio:1;border-radius:50%;touch-action:none}
 #vc{width:min(100%,320px);margin:8px auto}
+.bw{position:relative}
+.corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
+.corner button{padding:6px 9px;font-size:.75rem}
 #g,#vg{height:120px;border-radius:10px;margin-top:10px}
 #mp,#vm{height:220px;border-radius:10px;margin-top:10px}
 .big{text-align:center;margin:12px 0 4px;font-variant-numeric:tabular-nums}
@@ -34,7 +37,7 @@ button.on{border-color:var(--peak);color:var(--peak)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
 #msg{color:var(--mut);font-size:.85rem;min-height:2.4em;margin:10px 0 0}
 ul{list-style:none;margin:0;padding:0}
-li{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--panel);border-radius:10px;padding:10px 12px;margin:6px 0}
+li{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;background:var(--panel);border-radius:10px;padding:10px 12px;margin:6px 0}
 li small{display:block;color:var(--mut)}
 #vw{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5;padding-top:env(safe-area-inset-top,0px)}
 #vr{text-align:center;font-variant-numeric:tabular-nums;margin:4px 0}
@@ -53,7 +56,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </header>
 <main>
 <section id="pm">
-<canvas id="c" aria-label="Gボール"></canvas>
+<div class="bw"><canvas id="c" aria-label="Gボール"></canvas><div class="corner"><button id="cal">0点合わせ</button><button id="rst">最大値を消す</button></div></div>
 <div class="big"><b id="mag">0.00</b><span>G</span></div>
 <div class="row">
 <div><small>左右</small><strong id="gx">0.00</strong></div>
@@ -62,11 +65,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div><small>km/h</small><strong id="sp">--</strong></div>
 </div>
 <div class="btns">
-<button class="p" id="start">センサー開始</button>
-<button id="cal">0点合わせ</button>
+<button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
-<button id="gps">GPS開始</button>
-<button id="rst">最大値を消す</button>
 </div>
 </section>
 <section id="pl" hidden>
@@ -74,9 +74,10 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <canvas id="mp" aria-label="走行マップ"></canvas>
 <div class="btns"><button id="clr">軌跡を消す</button></div>
 <h2>保存したログ</h2>
+<div class="btns" style="margin:0 0 6px"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
 <ul id="list"></ul>
 </section>
-<p id="msg">「センサー開始」を押すと、傾きや加減速でボールが動きます。ボールをドラッグしても試せます。</p>
+<p id="msg">「開始」を押すと、センサーとGPSが動き出し、傾きや加減速でボールが動きます。ボールをドラッグしても試せます。</p>
 </main>
 <div id="vw" hidden><div class="in">
 <div class="btns" style="align-items:center"><button id="vx">← 戻る</button><b id="vn"></b></div>
@@ -132,21 +133,29 @@ function onMotion(e){
   if(!sensor){sensor=true;msg('センサー動作中。スマホを動かない状態にして「0点合わせ」を押すと基準になります。')}
   raw.x=a.x/9.81;raw.y=a.y/9.81;
 }
+let running=false,wl=null;
 async function start(){
   try{
     ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();
     if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
       const r=await DeviceMotionEvent.requestPermission();
-      if(r!=='granted'){msg('モーションセンサーの許可が必要です。');return}
+      if(r!=='granted'){msg('モーションセンサーの許可が必要です。');return false}
     }
     addEventListener('devicemotion',onMotion);
-    try{await navigator.wakeLock.request('screen')}catch(e){}
+    try{wl=await navigator.wakeLock.request('screen')}catch(e){}
     msg('センサーの値を待っています…');
-    setTimeout(()=>{if(!sensor)msg('センサーの値を取得できません。ボールのドラッグで試せます。')},1600);
-  }catch(e){msg('センサーを開始できませんでした。')}
+    setTimeout(()=>{if(running&&!sensor)msg('センサーの値を取得できません。ボールのドラッグで試せます。')},1600);
+    return true;
+  }catch(e){msg('センサーを開始できませんでした。');return false}
 }
+function setRun(on){running=on;const b=$('start');b.textContent=on?'停止':'開始';b.classList.toggle('p',!on);b.classList.toggle('on',on)}
+function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0};try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
 const calibrate=()=>{off={x:sxv()*raw.x,y:syv()*raw.y}};
-$('start').onclick=start;
+$('start').onclick=async()=>{
+  if(running){stopAll();return}
+  setRun(true);
+  if(await start())startGps();else setRun(false);
+};
 $('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
 $('clr').onclick=()=>{trk=[];org=null;mapDirty=true};
@@ -156,9 +165,35 @@ function saveLog(){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
   const rows=log.map(r=>[q(r[0],1),q(r[1],3),q(r[2],3),q(r[3],3),q(r[4],1),q(r[5],6),q(r[6],6)]);
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  saved.unshift({id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+Math.max(...rows.map(r=>r[3])).toFixed(2),gps:rows.some(r=>r[5]!=null),rows});
-  if(!persist()){saved.shift();msg('保存できませんでした（容量がいっぱいです）。古いログを削除してください。');return}
-  renderList();msg('ログを保存しました（'+rows.length+'件）。「ログ」タブから再生できます。');
+  const r=addLog(rows,name);
+  msg(r.ok?'ログを保存しました（'+rows.length+'件）。「ログ」タブから再生できます。':'保存できませんでした（容量がいっぱいです）。古いログを削除してください。');
+}
+function addLog(rows,name){
+  const L={id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+rows.reduce((a,r)=>Math.max(a,r[3]),0).toFixed(2),gps:rows.some(r=>r[5]!=null),rows};
+  saved.unshift(L);
+  if(persist()){renderList();return{L,ok:true}}
+  saved.shift();return{L,ok:false};
+}
+function exportCsv(L){
+  const f=v=>v==null?'':v;
+  const t='秒,左右G,前後G,合成G,km/h,緯度,経度\n'+L.rows.map(r=>r.map(f).join(',')).join('\n');
+  const d=new Date(L.id),p2=n=>String(n).padStart(2,'0');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));
+  a.download='gmeter-'+d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+'-'+p2(d.getHours())+p2(d.getMinutes())+'.csv';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+}
+function parseCsv(t){
+  const n=v=>{const x=parseFloat(v);return isFinite(x)?x:null};
+  const rows=[];
+  t.split(/\r?\n/).forEach(l=>{
+    const c=l.trim().split(',');if(c.length<3)return;
+    const tt=n(c[0]),x=n(c[1]),y=n(c[2]);if(tt==null||x==null||y==null)return;
+    const m=n(c[3]);
+    rows.push([tt,x,y,m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6])]);
+  });
+  return rows;
 }
 $('rec').onclick=e=>{
   if(!rec){rec=true;log=[];t0=performance.now();e.target.textContent='記録停止';e.target.classList.add('on');msg('記録中です（1秒に10回）。');return}
@@ -167,17 +202,31 @@ $('rec').onclick=e=>{
   if(confirm('記録を保存しますか？\n'+log.length+'件（約'+Math.round(log[log.length-1][0])+'秒）'))saveLog();else msg('記録を破棄しました。');
 };
 function renderList(){
-  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
+  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
 }
 $('list').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.a==='p')openV(b.dataset.id);
+  const L=saved.find(s=>s.id==b.dataset.id);if(!L)return;
+  if(b.dataset.a==='p')openL(L);
+  else if(b.dataset.a==='c')exportCsv(L);
   else if(confirm('このログを削除しますか？')){saved=saved.filter(s=>s.id!=b.dataset.id);persist();renderList()}
 };
 renderList();
+$('imp').onclick=()=>$('impf').click();
+$('impf').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{
+    const rows=parseCsv((await f.text()).replace(/^﻿/,''));
+    if(rows.length<2){msg('CSVから記録を読み取れませんでした。「秒,左右G,前後G,…」の形式のファイルを選んでください。');return}
+    const r=addLog(rows,f.name.replace(/\.[^.]+$/,''));
+    msg(r.ok?'CSVを読み込みました（'+rows.length+'件）。':'容量がいっぱいで保存はできませんが、再生はできます。');
+    openL(r.L);
+  }catch(err){msg('CSVを読み込めませんでした。')}
+};
 // gps
-$('gps').onclick=e=>{
-  if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null;gps={sp:null,lat:null,lon:null};e.target.textContent='GPS開始';e.target.classList.remove('on');return}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null}}
+function startGps(){
+  if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
   wid=navigator.geolocation.watchPosition(p=>{
     const c=p.coords;
@@ -188,8 +237,7 @@ $('gps').onclick=e=>{
       curM=0;if(trk.length>5000)trk.shift();mapDirty=true;
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
-  e.target.textContent='GPS停止';e.target.classList.add('on');
-};
+}
 function beep(){
   if(!ac||!cfg.snd)return;const n=performance.now();if(n-lastBeep<500)return;lastBeep=n;
   const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=880;g.gain.value=.15;
@@ -261,8 +309,8 @@ function drawMap(c,w,tr,cur){
   c.fillStyle=fg;c.textAlign='right';c.fillText('N↑',w-10,16);
 }
 // viewer
-function openV(id){
-  const L=saved.find(s=>s.id==id);if(!L||!L.rows.length)return;
+function openL(L){
+  if(!L||!L.rows.length)return;
   const rows=L.rows;let o=null,mx=0,last=null;const tr=[],cur=[];
   rows.forEach(r=>{
     mx=Math.max(mx,r[3]);
