@@ -90,10 +90,11 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p id="vr"></p>
 <div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></div>
 <input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
+<div id="vmw"><div id="vm" aria-label="ログの走行マップ"></div>
+<p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→赤）　ピンチで拡大・縮小</p>
+<div class="btns"><button id="vall">全体表示</button></div></div>
+<p class="mcap" id="vnogps" hidden>このログにはGPSの位置がないので、地図は出ません。記録するときは「開始」を押してGPSも動かしてください。</p>
 <canvas id="vg" aria-label="ログのグラフ"></canvas>
-<div id="vm" aria-label="ログの走行マップ"></div>
-<p class="mcap">緑の丸＝開始　線の色＝G（青→赤）　ピンチで拡大・縮小</p>
-<div class="btns"><button id="vall">全体表示</button></div>
 </div></div>
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
@@ -339,9 +340,10 @@ function openL(L){
   V={rows,pts:rows.map(r=>({x:r[1],y:r[2],m:r[3]})),trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0};
   $('vn').textContent=L.name;$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
   $('vw').hidden=false;
-  if(!VM)VM=makeMap($('vm'));
+  const has=tr.length>0;$('vmw').hidden=!has;$('vnogps').hidden=has;
+  if(has&&!VM)VM=makeMap($('vm'));
   size();vseek(0);
-  if(VM){
+  if(has&&VM){
     VM.grp.clearLayers();VM.cur.remove();VM.start.remove();V.mk=null;
     for(let i=1;i<tr.length;i++)seg(VM,tr[i-1],tr[i]);
     if(tr.length){VM.start.setLatLng([tr[0].la,tr[0].lo]).addTo(VM.map);fitAll(VM,tr)}
@@ -374,7 +376,7 @@ function vframe(dt){
   drawBall(vc,vcx,{x:r[1],y:-r[2],S:nice(V.peak),peak:V.peak,env:V.env,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:q[1],y:-q[2]}))});
   if(vg.clientWidth)drawGraph(vgx,vg.clientWidth,V.pts,true,V.i);
   const cp=V.cur[V.i];
-  if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map)}
+  if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map);if(V.play&&!VM.map.getBounds().contains([cp.la,cp.lo]))VM.map.panTo([cp.la,cp.lo])}
   $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h');
 }
 // main loop
