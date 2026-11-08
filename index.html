@@ -4,6 +4,12 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.10.1 (2026-11-08) ログ一覧の注意書きから「ホーム画面に追加…」の一文を削除
+  1.10.0 (2026-11-08) メーターのタブ名を「G-Bowl」に変更。メーター画面の下に「ログの空き容量」（残り時間の目安とバー）を表示。
+                     Safariの7日間ルールの注意をログ一覧に表示
+  1.9.0 (2026-11-08) ログの保存先を IndexedDB に変更（数百MBまで保存可能）。以前のログは自動で移行。保存に失敗したらCSVで書き出す。設定に保存件数と使用量を表示
+  1.8.0 (2026-11-08) グラフに目盛り（縦＝値、横＝時間）を追加。各グラフの右上にカーソル位置の値（ライブは最新値）を表示。
+                     ログ再生の並びを Gボール → 再生バー → グラフ → 地図 → 点数 に変更
   1.7.0 (2026-11-08) ログ再生のグラフ: ピンチで時間方向に拡大・縮小、タップ／なぞってカーソル移動。再生中は表示範囲が自動で送られる。「グラフを全体表示」で戻す
   1.6.0 (2026-11-08) オービス警告を追加。OpenStreetMapの speed_camera と自分で読み込んだ一覧（CSV）を使い、近づくとチャイムと表示で知らせる。
                      地図に赤丸で表示。設定でオン／オフと警告距離（200〜1000m）。地図データは地域ごとに7日間キャッシュ
@@ -43,7 +49,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .bw{position:relative}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
-#g,#vg{height:288px;border-radius:10px;margin-top:10px}
+#g,#vg{height:350px;border-radius:10px;margin-top:10px}
 #vg{touch-action:pan-y;cursor:crosshair;-webkit-user-select:none;user-select:none}
 #mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
 .mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
@@ -69,6 +75,13 @@ button.on{border-color:var(--peak);color:var(--peak)}
 .orb{margin:8px 0 0;padding:10px 12px;border-radius:10px;background:#dc2626;color:#fff;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
 #camo{margin:6px 0 0;padding:6px 10px;font-size:.95rem}
 .tab{border-radius:20px}
+.cap{margin-top:16px;background:var(--panel);border-radius:10px;padding:10px 12px}
+.caph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:.85rem}
+.caph b{font-variant-numeric:tabular-nums}
+.capbar{height:8px;border-radius:4px;background:var(--ring);margin:7px 0 5px;overflow:hidden}
+#capf{display:block;height:100%;width:0;background:var(--ball);transition:width .3s}
+#capd{display:block;color:var(--mut);font-size:.75rem;font-variant-numeric:tabular-nums}
+.note{margin:0 0 10px;padding:9px 11px;border-radius:10px;background:var(--panel);border-left:4px solid #f59e0b;font-size:.8rem;line-height:1.5}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
 #msg{color:var(--mut);font-size:.85rem;min-height:2.4em;margin:10px 0 0}
 ul{list-style:none;margin:0;padding:0}
@@ -96,7 +109,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </head>
 <body>
 <header>
-<nav><button class="tab on" data-t="m">メーター</button><button class="tab" data-t="l">ログ</button></nav>
+<nav><button class="tab on" data-t="m">G-Bowl</button><button class="tab" data-t="l">ログ</button></nav>
 <button id="gear" aria-label="設定">⚙ 設定</button>
 </header>
 <main>
@@ -118,6 +131,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <button id="cam">カメラ</button>
 <button id="vdl" hidden>動画を保存</button>
 </div>
+<div class="cap" aria-label="ログの空き容量"><div class="caph"><span>ログの空き容量</span><b id="capt">確認中…</b></div><div class="capbar"><i id="capf"></i></div><small id="capd"></small></div>
 </section>
 <section id="pl" hidden>
 <canvas id="g" aria-label="Gのグラフ"></canvas>
@@ -125,6 +139,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="mcap">緑の丸＝開始　赤の丸＝オービス　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="mfol">現在地</button><button id="mall">全体表示</button><button id="clr">軌跡を消す</button></div>
 <h2>保存したログ</h2>
+<p class="note">⚠ Safariは、このサイトを7日以上開かないと、保存したログを消すことがあります。大事なログは「CSV」で書き出しておいてください。</p>
 <div class="btns" style="margin:0 0 6px"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
 <ul id="list"></ul>
 </section>
@@ -135,19 +150,18 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <video id="vv" playsinline muted hidden></video>
 <canvas id="vc" aria-label="再生中のGボール"></canvas>
 <p id="vr"></p>
-<div id="vsc"></div>
-<div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></div>
+<div class="btns"><button class="p" id="vp">▶ 再生</button><select id="vs" aria-label="再生速度"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select><button id="vvid">動画を選ぶ</button><input type="file" id="vvf" accept="video/*" hidden></div>
 <input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
-<div class="btns"><button id="vvid">動画を選ぶ</button><input type="file" id="vvf" accept="video/*" hidden></div>
 <p class="mcap" id="vvst"></p>
 <div class="set" id="vadjw" hidden><span>動画のずれ調整 <b><span id="vadjv">0.0</span> 秒</b></span><input type="range" id="vadj" min="-5" max="5" step="0.1" value="0" aria-label="動画のずれ調整"></div>
+<canvas id="vg" aria-label="ログのグラフ"></canvas>
+<p class="mcap" id="vgz">ピンチで拡大・縮小　タップでカーソル移動</p>
+<div class="btns"><button id="vgall" hidden>グラフを全体表示</button></div>
 <div id="vmw"><div id="vm" aria-label="ログの走行マップ"></div>
 <p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="vall">全体表示</button></div></div>
 <p class="mcap" id="vnogps" hidden>このログにはGPSの位置がないので、地図は出ません。記録するときは「開始」を押してGPSも動かしてください。</p>
-<canvas id="vg" aria-label="ログのグラフ"></canvas>
-<p class="mcap" id="vgz">ピンチで拡大・縮小　タップでカーソル移動</p>
-<div class="btns"><button id="vgall" hidden>グラフを全体表示</button></div>
+<div id="vsc"></div>
 </div></div>
 <div id="camw" hidden>
 <video id="camv" playsinline muted autoplay aria-label="カメラ映像"></video>
@@ -174,11 +188,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>自分のオービス一覧 <small id="ocnt"></small></span><span><button id="oimp">読み込む</button> <button id="oclr">消す</button></span><input type="file" id="oimpf" accept=".csv,text/csv,text/plain" hidden></div>
 <p class="mcap" id="orbst"></p>
 <p class="mcap">オービスは、地図データ（OpenStreetMap）に登録された地点と、読み込んだ一覧（1行に「緯度,経度,名前」のCSV）を使います。地図データの登録は一部だけなので、すべてのオービスで鳴るわけではありません。</p>
+<p class="mcap" id="stor"></p>
 <p class="mcap" id="ver"></p>
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.7.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.10.1',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -198,23 +213,22 @@ let osmCams=[],userCams=[],camState={},orbNear=null,camBusy=false,camTry={},camS
 try{userCams=JSON.parse(localStorage.getItem('gm-orbis')||'[]')||[]}catch(e){userCams=[]}
 try{camCache=JSON.parse(localStorage.getItem('gm-camc')||'{}')||{}}catch(e){camCache={}}
 let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,recent=[],lastVal=null,valBusy=false,roadNoData=false,limStat={t:null,n:0,err:''};
-try{saved=JSON.parse(localStorage.getItem('gm-logs')||'[]')}catch(e){}
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,288);fit(vc);fit(vg,288);fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
+function size(){fit(cv);fit(gc,350);fit(vc);fit(vg,350);fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
 let LM=null,VM=null;
 addEventListener('resize',size);size();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';
-  if(b.dataset.t==='l')liveMap();
+  if(b.dataset.t==='l')liveMap();else if(logsReady)showCap();
   size();
 });
 // settings
 $('ver').textContent='バージョン '+APP_VERSION+'（'+APP_DATE+'）';
 $('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
 $('gear').onclick=()=>{
-  showLimStat();showOrbStat();
+  showLimStat();showOrbStat();showStor();
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
@@ -288,20 +302,71 @@ $('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
 $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if(p)LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))};
 $('mall').onclick=()=>{if(LM)fitAll(LM,trk)};
 // recording and saved logs
-const persist=()=>{try{localStorage.setItem('gm-logs',JSON.stringify(saved));return true}catch(e){return false}};
+// 保存先: IndexedDB（ブラウザ内のデータベース。数百MB使える）。使えない環境では localStorage（約5MB）に保存
+let db=null,dbOk=false,logsReady=false;
+function idb(){
+  return new Promise((res,rej)=>{
+    if(!window.indexedDB){rej(new Error('IndexedDBなし'));return}
+    const r=indexedDB.open('gmeter',1);
+    r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('logs'))d.createObjectStore('logs',{keyPath:'id'})};
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error||new Error('開けません'));r.onblocked=()=>rej(new Error('blocked'));
+  });
+}
+const tx=(mode,fn)=>new Promise((res,rej)=>{
+  const t=db.transaction('logs',mode),q=fn(t.objectStore('logs'));let out;
+  if(q)q.onsuccess=()=>{out=q.result};
+  t.oncomplete=()=>res(out);t.onerror=t.onabort=()=>rej(t.error||new Error('保存に失敗'));
+});
+const lsSave=()=>{try{localStorage.setItem('gm-logs',JSON.stringify(saved));return true}catch(e){return false}};
+function putLog(L){return dbOk?tx('readwrite',st=>st.put(L)).then(()=>true,()=>false):Promise.resolve(lsSave())}
+function delLog(id){return dbOk?tx('readwrite',st=>st.delete(id)).then(()=>true,()=>false):Promise.resolve(lsSave())}
+async function loadLogs(){
+  let old=[];try{old=JSON.parse(localStorage.getItem('gm-logs')||'[]')||[]}catch(e){old=[]}
+  try{
+    db=await idb();dbOk=true;
+    if(old.length){   // 以前の保存場所（localStorage）からデータベースへ移す
+      await tx('readwrite',st=>{old.forEach(L=>st.put(L))});
+      try{localStorage.removeItem('gm-logs')}catch(e){}
+    }
+    saved=((await tx('readonly',st=>st.getAll()))||[]).sort((a,b)=>b.id-a.id);
+  }catch(e){dbOk=false;saved=old}
+  logsReady=true;renderList();showCap();
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+}
+// メーター画面の「ログの空き容量」: 残り容量を、1時間のログ＝約3MB として記録できる時間に換算
+const MB_PER_H=3,fmtMB=b=>b>=1073741824?(b/1073741824).toFixed(1)+'GB':(b/1048576).toFixed(1)+'MB';
+async function showCap(){
+  let used=null,quota=null;
+  if(dbOk){try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();used=e.usage;quota=e.quota}}catch(err){}}
+  else{let n=0;try{n=(localStorage.getItem('gm-logs')||'').length*2}catch(err){}used=n;quota=5*1048576}
+  const f=$('capf');
+  if(used==null||!quota){$('capt').textContent='確認できません';$('capd').textContent='保存したログ '+saved.length+'件';f.style.width='0';return}
+  const free=Math.max(0,quota-used),pct=Math.min(100,used/quota*100),h=free/1048576/MB_PER_H;
+  $('capt').textContent=h<1/60?'いっぱいです':'あと約 '+(h>=100?Math.floor(h).toLocaleString()+' 時間':h>=1?h.toFixed(1)+' 時間':Math.floor(h*60)+' 分')+' 記録できます';
+  f.style.width=Math.max(pct,used>0?1:0).toFixed(1)+'%';f.style.background=pct>90?css('--peak'):'';
+  $('capd').textContent='使用 '+fmtMB(used)+' ／ 上限 '+fmtMB(quota)+'　保存したログ '+saved.length+'件';
+}
+setInterval(()=>{if(logsReady&&!$('pm').hidden)showCap()},15000);
+async function showStor(){
+  const el=$('stor');if(!el)return;
+  let t='保存したログ：'+saved.length+'件（'+(dbOk?'データベースに保存':'簡易保存・約5MBまで')+'）';
+  try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();if(e.usage!=null)t+='　使用 約'+(e.usage/1048576).toFixed(1)+'MB'}}catch(err){}
+  el.textContent=t;
+}
 function saveLog(sc,vm){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
   const rows=log.map(r=>[q(r[0],1),q(r[1],3),q(r[2],3),q(r[3],3),q(r[4],1),q(r[5],6),q(r[6],6)]);
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const r=addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()},vm);
-  msg(r.ok?'ログを保存しました（'+rows.length+'件）'+(r.L.score?'　スコア '+r.L.score.total+'点':'')+'。「ログ」タブから再生できます。':'保存できませんでした（容量がいっぱいです）。古いログを削除してください。');
+  addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()},vm).then(r=>{
+  if(!r.ok)exportCsv(r.L);
+  msg(r.ok?'ログを保存しました（'+rows.length+'件）'+(r.L.score?'　スコア '+r.L.score.total+'点':'')+'。「ログ」タブから再生できます。':'保存できませんでした（容量がいっぱいです）。記録はCSVとして書き出しました。古いログを削除してください。');
+  });
 }
 function addLog(rows,name,sc,pen,vm){
   const L={id:Date.now(),name,dur:Math.round(rows[rows.length-1][0]),peak:+rows.reduce((a,r)=>Math.max(a,r[3]),0).toFixed(2),gps:rows.some(r=>r[5]!=null),score:sc||scoreRows(rows),pen:pen||null,rows};
   if(vm){L.vid=vm.vid;L.voff=vm.voff}
-  saved.unshift(L);
-  if(persist()){renderList();return{L,ok:true}}
-  saved.shift();return{L,ok:false};
+  saved.unshift(L);renderList();
+  return putLog(L).then(ok=>{if(!ok){saved=saved.filter(s=>s!==L);renderList()}showCap();return{L,ok}});
 }
 function exportCsv(L){
   const f=v=>v==null?'':v;
@@ -344,6 +409,7 @@ $('rec').onclick=()=>{
 };
 function logScore(s){try{if(s.score===undefined)s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
 function renderList(){
+  if(!logsReady){$('list').innerHTML='<li><small>ログを読み込み中…</small></li>';return}
   $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+(s.vid?'　動画あり':'')+(logScore(s)?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
 }
 $('list').onclick=e=>{
@@ -351,16 +417,16 @@ $('list').onclick=e=>{
   const L=saved.find(s=>s.id==b.dataset.id);if(!L)return;
   if(b.dataset.a==='p')openL(L);
   else if(b.dataset.a==='c')exportCsv(L);
-  else if(confirm('このログを削除しますか？')){saved=saved.filter(s=>s.id!=b.dataset.id);persist();renderList()}
+  else if(confirm('このログを削除しますか？')){saved=saved.filter(s=>s!==L);delLog(L.id).then(showCap);renderList()}
 };
-renderList();
+loadLogs();
 $('imp').onclick=()=>$('impf').click();
 $('impf').onchange=async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
   try{
     const rows=parseCsv((await f.text()).replace(/^﻿/,''));
     if(rows.length<2){msg('CSVから記録を読み取れませんでした。「秒,左右G,前後G,…」の形式のファイルを選んでください。');return}
-    const r=addLog(rows,f.name.replace(/\.[^.]+$/,''));
+    const r=await addLog(rows,f.name.replace(/\.[^.]+$/,''));
     msg(r.ok?'CSVを読み込みました（'+rows.length+'件）。':'容量がいっぱいで保存はできませんが、再生はできます。');
     openL(r.L);
   }catch(err){msg('CSVを読み込めませんでした。')}
@@ -726,20 +792,40 @@ function drawBall(cvs,c,sc){
 }
 // ログのグラフ: 左右G / 前後G / 車速 / 減点 の4段
 function drawPanels(c,w,pts,full,cur,win){
-  const H=72,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak');
-  c.clearRect(0,0,w,H*4);
+  const H=84,TS=14,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak'),bg=css('--panel');
+  c.clearRect(0,0,w,H*4+TS);
+  if(!n)return;
   const za=full&&win?win.a:0,zb=full&&win?win.b:Math.max(n-1,1);   // 表示する範囲（拡大中はその一部）
   const px=i=>full?(i-za)/Math.max(zb-za,1e-6)*w:w-(n-1-i)/(N-1)*w;
   const i0=full?Math.max(0,Math.floor(za)-1):0,i1=full?Math.min(n-1,Math.ceil(zb)+1):n-1;
   const niceR=v=>[0.3,0.5,0.8,1.2,2,4].find(r=>r>=v)||4;
   let ax=0,ay=0,smax=0;
   pts.forEach(p=>{ax=Math.max(ax,Math.abs(p.x));ay=Math.max(ay,Math.abs(p.y));if(p.sp!=null)smax=Math.max(smax,p.sp)});
-  const rx=niceR(ax*1.1),ry=niceR(ay*1.1),rs=Math.max(40,Math.ceil(smax*1.1/20)*20);
-  const panel=(k,label,draw)=>{
-    const top=k*H;c.save();c.beginPath();c.rect(0,top,w,H);c.clip();
-    if(k<3){c.strokeStyle=ring;c.lineWidth=1;c.beginPath();c.moveTo(0,top+H-.5);c.lineTo(w,top+H-.5);c.stroke()}
+  const rx=niceR(ax*1.1),ry=niceR(ay*1.1),rs=Math.max(40,Math.ceil(smax*1.1/20)*20),ss=rs<=60?20:rs<=120?40:rs<=200?50:100;
+  const ci=full?(cur!=null&&cur>=0?Math.min(cur,n-1):null):n-1,cp=ci!=null?pts[ci]:null;   // 右上に値を出す点（再生はカーソル、ライブは最新）
+  // 時間の目盛り（再生＝経過時間、ライブ＝何秒前）
+  const ticks=[];
+  if(pts[0].t!=null){
+    const base=full?0:pts[n-1].t,ta=pts[Math.max(0,Math.min(n-1,Math.round(full?za:0)))].t,tb=pts[Math.min(n-1,Math.round(full?zb:n-1))].t;
+    const st=[1,2,5,10,15,30,60,120,300,600,1200,1800].find(s=>Math.max(.1,tb-ta)/s<=5)||3600;
+    let prev=null;
+    for(let i=i0;i<=i1;i++){const k=Math.floor((pts[i].t-base)/st+1e-6);if(prev!==null&&k!==prev)ticks.push({x:px(i),t:k*st});prev=k}
+  }
+  const tl=t=>full?fmtT(t):(t===0?'今':t+'秒');
+  let yl=[];
+  const grid=(y,lab,dash)=>{c.strokeStyle=ring;c.lineWidth=1;if(dash)c.setLineDash([3,3]);c.beginPath();c.moveTo(0,Math.round(y)+.5);c.lineTo(w,Math.round(y)+.5);c.stroke();c.setLineDash([]);yl.push([y,lab])};
+  const halo=(t,x,y)=>{c.lineWidth=3;c.strokeStyle=bg;c.strokeText(t,x,y);c.fillText(t,x,y)};
+  const panel=(k,label,val,draw)=>{
+    const top=k*H;c.save();c.beginPath();c.rect(0,top,w,H);c.clip();yl=[];
+    c.strokeStyle=ring;c.lineWidth=1;c.globalAlpha=.55;
+    ticks.forEach(t=>{const X=Math.round(t.x)+.5;c.beginPath();c.moveTo(X,top+15);c.lineTo(X,top+H);c.stroke()});
+    c.globalAlpha=1;
+    if(k<3){c.strokeStyle=ring;c.beginPath();c.moveTo(0,top+H-.5);c.lineTo(w,top+H-.5);c.stroke()}
     draw(top);
-    c.fillStyle=mut;c.font='10px system-ui';c.textAlign='left';c.fillText(label,4,top+11);
+    c.font='9px system-ui';c.textAlign='left';c.fillStyle=mut;c.lineJoin='round';
+    yl.forEach(([y,l])=>halo(l,3,y+3));
+    c.font='10px system-ui';c.fillStyle=mut;halo(label,4,top+11);
+    if(val!=null){c.font='600 12px system-ui';c.textAlign='right';c.fillStyle=fg;halo(val,w-4,top+12)}
     c.restore();
   };
   const line=(key,zero,scale)=>{
@@ -747,25 +833,34 @@ function drawPanels(c,w,pts,full,cur,win){
     for(let i=i0;i<=i1;i++){const v=pts[i][key];if(v==null){on=false;continue}const Y=zero-v*scale;on?c.lineTo(px(i),Y):c.moveTo(px(i),Y);on=true}
     c.stroke();
   };
-  const gPanel=(k,key,label,r)=>panel(k,label+'　±'+r+'G',top=>{
-    const mid=top+H/2+5,sc=(H/2-11)/r;
-    c.strokeStyle=ring;c.lineWidth=1;c.setLineDash([3,3]);c.beginPath();c.moveTo(0,mid);c.lineTo(w,mid);c.stroke();c.setLineDash([]);
+  const gv=v=>v==null?'--':(v>0?'+':'')+v.toFixed(2)+' G';
+  const gPanel=(k,key,label,r)=>panel(k,label,cp?gv(cp[key]):null,top=>{
+    const mid=top+H/2+6,sc=(H/2-12)/r;
+    [r,r/2,0,-r/2,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+(+v.toFixed(2)),v===0));
     line(key,mid,sc);
   });
   gPanel(0,'x',(full?'':'過去30秒　')+'左右G',rx);
   gPanel(1,'y','前後G',ry);
-  panel(2,'車速　0〜'+rs+' km/h',top=>line('sp',top+H-4,(H-18)/rs));
-  panel(3,'減点　棒＝ジャーク　▲＝トゲ　■＝＋型',top=>{
-    const base=top+H-4,hh=H-30,bw=Math.max(1.5,full?w/Math.max(zb-za+1,1):w/N);
+  panel(2,'車速 km/h',cp?(cp.sp==null?'-- km/h':Math.round(cp.sp)+' km/h'):null,top=>{
+    const base=top+H-6,sc=(H-24)/rs;
+    for(let v=0;v<=rs;v+=ss)grid(base-v*sc,String(v),false);
+    line('sp',base,sc);
+  });
+  panel(3,'減点　棒＝ジャーク ▲トゲ ■＋型',cp?'ジャーク '+(cp.pj||0).toFixed(2)+(cp.ev==='spike'?' ▲':cp.ev?' ■':''):null,top=>{
+    const base=top+H-6,hh=H-36,bw=Math.max(1.5,full?w/Math.max(zb-za+1,1):w/N);
+    grid(base,'0',false);grid(base-hh/2,'0.5',true);grid(base-hh,'1',false);
     c.fillStyle=pc;c.globalAlpha=.6;
     for(let i=i0;i<=i1;i++){const p=pts[i];if(p.pj>0)c.fillRect(px(i)-bw/2,base-p.pj*hh,bw,p.pj*hh)}
     c.globalAlpha=1;
-    pts.forEach((p,i)=>{
-      if(!p.ev||i<i0||i>i1)return;const X=px(i),Y=top+24;
-      if(p.ev==='spike'){c.fillStyle=pc;c.beginPath();c.moveTo(X,Y-6);c.lineTo(X+6,Y+5);c.lineTo(X-6,Y+5);c.closePath();c.fill()}
-      else{c.fillStyle='#8b5cf6';c.fillRect(X-5,Y-5,10,10)}
-    });
+    for(let i=i0;i<=i1;i++){
+      const p=pts[i];if(!p.ev)continue;const X=px(i),Y=top+21;
+      if(p.ev==='spike'){c.fillStyle=pc;c.beginPath();c.moveTo(X,Y-5);c.lineTo(X+5,Y+4);c.lineTo(X-5,Y+4);c.closePath();c.fill()}
+      else{c.fillStyle='#8b5cf6';c.fillRect(X-4,Y-4,8,8)}
+    }
   });
+  // 時間のラベル（いちばん下の帯）
+  c.fillStyle=mut;c.font='9px system-ui';c.textAlign='center';
+  ticks.forEach(t=>{const lb=tl(t.t),hw=c.measureText(lb).width/2;c.fillText(lb,Math.min(w-hw-1,Math.max(hw+1,t.x)),H*4+TS-3)});
   if(full&&cur!=null){c.strokeStyle=fg;c.lineWidth=1.5;c.beginPath();c.moveTo(px(cur),0);c.lineTo(px(cur),H*4);c.stroke()}
 }
 const gcol=m=>'hsl('+(220-220*Math.min(m/.6,1))+',100%,36%)';
@@ -818,7 +913,7 @@ function openL(L){
     cur.push(last);
   });
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
-  const pts=rows.map((r,i)=>({x:r[1],y:r[2],m:r[3],sp:r[4],pj:pen.pj[i]||0,ev:null}));
+  const pts=rows.map((r,i)=>({t:r[0],x:r[1],y:r[2],m:r[3],sp:r[4],pj:pen.pj[i]||0,ev:null}));
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
   vClearVid();
   V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null,z:{a:0,b:rows.length-1}};
@@ -1034,7 +1129,7 @@ function loop(now){
   if(now-lastS>=100){
     lastS=now;
     let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
-    hist.push({x:sg.x,y:-sg.y,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev});if(hist.length>N)hist.shift();
+    hist.push({t:now/1000,x:sg.x,y:-sg.y,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev});if(hist.length>N)hist.shift();
     if(rec){
       log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon]);
       logPen.push(scorer?+takeP(scorer).toFixed(2):0);
