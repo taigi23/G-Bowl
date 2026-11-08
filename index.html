@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.15.0 (2026-11-08) 音色に「無限音階（シェパードトーン）」を追加。Gが上がるほど半音ずつ上がり続ける（上限なし）
   1.14.1 (2026-11-08) 設定の「更新を確認」で新しい版が見つかったら、その場で更新できるように。
                      トランペット（ひずんだ金管の倍音・強いほど明るい）とバイオリン（胴の響き＋ビブラート）を別の音に作り直し。
                      ギターをアコースティックギター（弦の振動のシミュレーション＋木の胴の響き）に変更
@@ -212,7 +213,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.14.1',APP_DATE='2026-11-07';
+const APP_VERSION='1.15.0',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -841,6 +842,8 @@ const TIM={
   marimba:{label:'マリンバ',hit:[[1,1,.45],[4,.3,.1]]},
   bell:{label:'ベル',hit:[[1,1,1.8],[2.76,.5,1.1],[5.4,.25,.5]]},
   musicbox:{label:'オルゴール',hit:[[2,1,1],[6,.2,.3],[12.2,.08,.15]]},
+  // 無限音階（シェパードトーン）: 1オクターブずつ離れた音を重ね、真ん中の高さほど大きく鳴らす。半音ずつ上げても高くなりきらず、どこまでも上がり続けるように聞こえる
+  shepard:{label:'無限音階（シェパードトーン）',shep:{oct:8,c:600,sd:1.1,vol:.9}},
 };
 const pwC={};
 const pw=h=>{const k=h.join(',');if(!pwC[k]){const re=new Float32Array(h.length+1),im=new Float32Array(h.length+1);h.forEach((v,i)=>im[i+1]=v);pwC[k]=ac.createPeriodicWave(re,im)}return pwC[k]};
@@ -904,6 +907,17 @@ function pluck(sp,f,v,prev){
   g.gain.value=v*.5;src.connect(g);g.connect(guitarBody());src.start(t);
   return [g];
 }
+function mkShep(sp){
+  const g=ac.createGain();g.gain.value=0;g.connect(ac.destination);
+  const S={g,os:[],gs:[],sp};
+  for(let k=0;k<sp.oct;k++){const o=ac.createOscillator(),a=ac.createGain();o.type='sine';a.gain.value=0;o.connect(a);a.connect(g);o.start();S.os.push(o);S.gs.push(a)}
+  shepSet(S,0);return S;
+}
+function shepSet(S,n){   // n: 半音の段数（上限なし）。12段で1周して元の音の並びに戻る
+  const t=ac.currentTime,ph=(((n%12)+12)%12)/12;
+  S.os.forEach((o,k)=>{const f=32.70*Math.pow(2,ph+k),w=Math.exp(-Math.pow(Math.log2(f/S.sp.c),2)/(2*S.sp.sd*S.sp.sd));o.frequency.setValueAtTime(f,t);S.gs[k].gain.setTargetAtTime(w*.3,t,.006)});
+}
+function shepStop(S){const t=ac.currentTime;S.g.gain.cancelScheduledValues(t);S.g.gain.setTargetAtTime(0,t,.03);S.os.forEach(o=>o.stop(t+.2))}
 const strike=(T,f,v,prev)=>T.ks?pluck(T.ks,f,v,prev):hit(T.hit,f,v,prev);
 let tone=null;
 function ensureTone(){
@@ -911,15 +925,19 @@ function ensureTone(){
   const T=TIM[cfg.tim]||TIM.sine;
   if(tone&&tone.key===cfg.tim)return;
   if(tone&&tone.V)susStop(tone.V);
+  if(tone&&tone.S)shepStop(tone.S);
   if(tone&&tone.prev)tone.prev.forEach(g=>g.gain.setTargetAtTime(0,ac.currentTime,.02));
-  tone={key:cfg.tim,T,st:-1,last:0,V:T.sus?mkSus(T.sus,SCALE[0]):null};
+  tone={key:cfg.tim,T,st:-1,last:0,V:T.sus?mkSus(T.sus,SCALE[0]):null,S:T.shep?mkShep(T.shep):null};
 }
 function setVol(m){
   if(!ac)return;
   if(!tone||tone.key!==cfg.tim)ensureTone();
   const v=cfg.snd?Math.min(1,Math.max(0,(m-cfg.thr)/1)):0;
-  const st=cfg.pitch?Math.min(20,Math.max(0,Math.floor((m-cfg.thr)/.05+1e-6))):0;
-  if(tone.V){
+  const raw=cfg.pitch?Math.max(0,Math.floor((m-cfg.thr)/.05+1e-6)):0,st=Math.min(20,raw);
+  if(tone.S){   // 無限音階は上限なしで上がり続ける
+    tone.S.g.gain.setTargetAtTime(v*.4*tone.T.shep.vol,ac.currentTime,.08);
+    const n=Math.min(raw,400);if(n!==tone.st){tone.st=n;shepSet(tone.S,n)}
+  }else if(tone.V){
     susLevel(tone.V,v,.08);
     if(st!==tone.st){tone.st=st;susPitch(tone.V,SCALE[st],.015)}
   }else{
@@ -936,7 +954,11 @@ $('tim').onchange=e=>{cfg.tim=e.target.value;saveCfg();ensureTone()};
 $('timt').onclick=()=>{
   ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();
   const T=TIM[$('tim').value]||TIM.sine,notes=[0,2,4,5,7,9,11,12];
-  if(T.sus){
+  if(T.shep){   // 半音ずつ2オクターブ上げて、上がり続けて聞こえるのを試す
+    const S=mkShep(T.shep);S.g.gain.setTargetAtTime(.3,ac.currentTime,.02);
+    for(let i=0;i<=24;i++)setTimeout(()=>shepSet(S,i),i*130);
+    setTimeout(()=>shepStop(S),25*130+150);
+  }else if(T.sus){
     const V=mkSus(T.sus,SCALE[0]);susLevel(V,.6,.02);
     notes.forEach((n,i)=>setTimeout(()=>susPitch(V,SCALE[n],.01),i*180));
     setTimeout(()=>susStop(V),notes.length*180+150);
