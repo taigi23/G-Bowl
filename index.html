@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.11.0 (2026-11-08) 更新の確認を追加。起動時と、アプリに戻ったとき（10分おき）に新しい版を確かめ、あれば上に「更新する」を表示。設定に「更新を確認」
   1.10.3 (2026-11-08) 注意書きを「このサイトを7日以上開かない場合…」に修正
   1.10.2 (2026-11-08) ログ一覧の注意書きの文言を変更（ブラウザ共通の表現に）
   1.10.1 (2026-11-08) ログ一覧の注意書きから「ホーム画面に追加…」の一文を削除
@@ -77,6 +78,8 @@ button.on{border-color:var(--peak);color:var(--peak)}
 .orb{margin:8px 0 0;padding:10px 12px;border-radius:10px;background:#dc2626;color:#fff;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
 #camo{margin:6px 0 0;padding:6px 10px;font-size:.95rem}
 .tab{border-radius:20px}
+.upd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:var(--panel);border-left:4px solid var(--ball);font-size:.88rem}
+.upd[hidden]{display:none}
 .cap{margin-top:16px;background:var(--panel);border-radius:10px;padding:10px 12px}
 .caph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:.85rem}
 .caph b{font-variant-numeric:tabular-nums}
@@ -112,6 +115,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <body>
 <header>
 <nav><button class="tab on" data-t="m">G-Bowl</button><button class="tab" data-t="l">ログ</button></nav>
+<div id="upd" class="upd" role="status" hidden><span>新しい版 <b id="updv"></b> があります</span><button class="p" id="updb">更新する</button></div>
 <button id="gear" aria-label="設定">⚙ 設定</button>
 </header>
 <main>
@@ -192,10 +196,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="mcap">オービスは、地図データ（OpenStreetMap）に登録された地点と、読み込んだ一覧（1行に「緯度,経度,名前」のCSV）を使います。地図データの登録は一部だけなので、すべてのオービスで鳴るわけではありません。</p>
 <p class="mcap" id="stor"></p>
 <p class="mcap" id="ver"></p>
+<div class="btns" style="margin-top:4px"><button id="updc">更新を確認</button></div>
+<p class="mcap" id="upst"></p>
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.10.3',APP_DATE='2026-11-07';
+const APP_VERSION='1.11.0',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -228,6 +234,27 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
 });
 // settings
 $('ver').textContent='バージョン '+APP_VERSION+'（'+APP_DATE+'）';
+// 更新の確認: サーバーの index.html を取り直して版を比べる。ホーム画面のアプリでも古い版のままにならないようにする
+const cmpVer=(a,b)=>{const x=a.split('.').map(Number),y=b.split('.').map(Number);for(let i=0;i<3;i++){const d=(x[i]||0)-(y[i]||0);if(d)return d}return 0};
+let updT=0,updV=null;
+async function checkUpdate(manual){
+  const st=$('upst');updT=Date.now();
+  if(manual)st.textContent='確認中…';
+  try{
+    const r=await fetch(location.pathname,{cache:'reload'});   // ネットから取り直し、ブラウザのキャッシュも新しくする
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const m=(await r.text()).match(/APP_VERSION='([^']+)'/);if(!m)throw new Error('版が見つかりません');
+    if(cmpVer(m[1],APP_VERSION)>0){updV=m[1];$('updv').textContent=m[1];$('upd').hidden=false;if(manual)st.textContent='新しい版 '+m[1]+' があります。画面上の「更新する」を押してください。'}
+    else if(manual)st.textContent='最新の版です（'+APP_VERSION+'）。';
+  }catch(e){if(manual)st.textContent='確認できませんでした（'+(e&&e.message||'通信エラー')+'）。ネットにつながっているか確かめてください。'}
+}
+$('updc').onclick=()=>checkUpdate(true);
+$('updb').onclick=()=>{
+  if(rec&&!confirm('記録中です。更新すると今の記録は保存されずに消えます。更新しますか？'))return;
+  location.reload();
+};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-updT>600000)checkUpdate(false)});
+if(location.protocol.startsWith('http'))setTimeout(()=>checkUpdate(false),1500);
 $('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
 $('gear').onclick=()=>{
   showLimStat();showOrbStat();showStor();
