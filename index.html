@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.16.0 (2026-11-08) すべての音色を無限音階に（同じ音色を1オクターブずつ6層重ねる）。単独の「無限音階」音色はサイン波に統合
   1.15.0 (2026-11-08) 音色に「無限音階（シェパードトーン）」を追加。Gが上がるほど半音ずつ上がり続ける（上限なし）
   1.14.1 (2026-11-08) 設定の「更新を確認」で新しい版が見つかったら、その場で更新できるように。
                      トランペット（ひずんだ金管の倍音・強いほど明るい）とバイオリン（胴の響き＋ビブラート）を別の音に作り直し。
@@ -213,7 +214,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.15.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.16.0',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -822,28 +823,29 @@ function checkOver(){
   if(overCount<3&&now-lastAlert>4000){pipi();lastAlert=now;overCount++}
 }
 // G警告音: Gが大きくなるほど音量が上がる（しきい値から +1G で最大）。
-// 音階: しきい値から 0.05G ごとに半音ずつ上がる（ド ド# レ レ# ミ ファ… C5 から +1G で G#6 まで）
+// 音階: どの音色も無限音階（シェパードトーン）。しきい値から 0.05G ごとに半音ずつ、上限なく上がり続けるように聞こえる。
+//   しくみ: 同じ音色を1オクターブずつ離して6つ重ね、真ん中の高さほど大きく鳴らす。各層は半音ずつ上がり、
+//   いちばん上（ほぼ聞こえない）まで行った層だけがいちばん下に戻る。音の並びは12段で元と同じになる
 // 音色: 持続音（鳴り続ける）と、打つ音（音が変わるたび＋Gが大きいほど速い間隔で打ち直す）。どれも電子的に合成した音
-const SCALE=Array.from({length:21},(_,n)=>523.25*Math.pow(2,n/12));   // C5 C#5 D5 … G#6（半音ずつ）
+const SHK=6,SHSD=1.0;
+const layerF=(n,c,k)=>{const pos=(((n/12+k)%SHK)+SHK)%SHK,d=pos-SHK/2;return{f:c*Math.pow(2,d),pos,w:Math.exp(-d*d/(2*SHSD*SHSD))}};
 const TIM={
-  sine:{label:'サイン波（標準）',sus:{type:'sine',vol:1}},
-  beep:{label:'電子音',sus:{type:'square',lp:2600,vol:.6}},
-  bit8:{label:'8ビット',sus:{type:'square',vol:.4}},
+  sine:{label:'サイン波（標準）',c:600,sus:{type:'sine',vol:1}},
+  beep:{label:'電子音',c:600,sus:{type:'square',lp:2600,vol:.6}},
+  bit8:{label:'8ビット',c:600,sus:{type:'square',vol:.4}},
   // トランペット: 金管らしい倍音を強くひずませ、強く吹く（Gが大きい）ほど明るい音になる。ビブラートなし
-  trumpet:{label:'トランペット',sus:{h:[1,.95,.85,.75,.6,.5,.4,.3,.22,.15,.1,.07],sat:2.2,bright:[1.5,7],q:2.5,vol:.7}},
+  trumpet:{label:'トランペット',c:500,sus:{h:[1,.95,.85,.75,.6,.5,.4,.3,.22,.15,.1,.07],sat:2.2,bright:[1.5,7],q:2.5,vol:.7}},
   // バイオリン: のこぎり波に胴の響き（600Hz・2.9kHz付近を強調）と深めのビブラート
-  violin:{label:'バイオリン',sus:{type:'sawtooth',vib:[5.8,.007],eq:[['highpass',250,0,.7],['peaking',600,4,1.2],['peaking',2900,7,1.4],['lowpass',7000,0,.7]],vol:.8}},
-  flute:{label:'フルート',sus:{h:[1,.18,.06],vib:[5,.006],vol:1}},
-  clarinet:{label:'クラリネット',sus:{h:[1,0,.55,0,.3,0,.15,0,.08],vol:.9}},
-  organ:{label:'オルガン',sus:{h:[1,.7,.45,.35,0,.25,0,.2],vol:.8}},
-  piano:{label:'ピアノ',hit:[[1,1,1.2],[2,.45,.8],[3,.25,.5],[4,.12,.35]]},
-  // アコースティックギター: 弦を弾いた振動をシミュレーション（Karplus-Strong）し、木の胴の響きを付ける。1オクターブ下で鳴らす
-  guitar:{label:'アコースティックギター',ks:{oct:.5,T:2.4}},
-  marimba:{label:'マリンバ',hit:[[1,1,.45],[4,.3,.1]]},
-  bell:{label:'ベル',hit:[[1,1,1.8],[2.76,.5,1.1],[5.4,.25,.5]]},
-  musicbox:{label:'オルゴール',hit:[[2,1,1],[6,.2,.3],[12.2,.08,.15]]},
-  // 無限音階（シェパードトーン）: 1オクターブずつ離れた音を重ね、真ん中の高さほど大きく鳴らす。半音ずつ上げても高くなりきらず、どこまでも上がり続けるように聞こえる
-  shepard:{label:'無限音階（シェパードトーン）',shep:{oct:8,c:600,sd:1.1,vol:.9}},
+  violin:{label:'バイオリン',c:700,sus:{type:'sawtooth',vib:[5.8,.007],eq:[['highpass',250,0,.7],['peaking',600,4,1.2],['peaking',2900,7,1.4],['lowpass',7000,0,.7]],vol:.8}},
+  flute:{label:'フルート',c:800,sus:{h:[1,.18,.06],vib:[5,.006],vol:1}},
+  clarinet:{label:'クラリネット',c:450,sus:{h:[1,0,.55,0,.3,0,.15,0,.08],vol:.9}},
+  organ:{label:'オルガン',c:500,sus:{h:[1,.7,.45,.35,0,.25,0,.2],vol:.8}},
+  piano:{label:'ピアノ',c:500,hit:[[1,1,1.2],[2,.45,.8],[3,.25,.5],[4,.12,.35]]},
+  // アコースティックギター: 弦を弾いた振動をシミュレーション（Karplus-Strong）し、木の胴の響きを付ける
+  guitar:{label:'アコースティックギター',c:300,ks:{T:2}},
+  marimba:{label:'マリンバ',c:500,hit:[[1,1,.45],[4,.3,.1]]},
+  bell:{label:'ベル',c:700,hit:[[1,1,1.8],[2.76,.5,1.1],[5.4,.25,.5]]},
+  musicbox:{label:'オルゴール',c:1200,hit:[[1,1,1],[3,.2,.3],[6.1,.08,.15]]},
 };
 const pwC={};
 const pw=h=>{const k=h.join(',');if(!pwC[k]){const re=new Float32Array(h.length+1),im=new Float32Array(h.length+1);h.forEach((v,i)=>im[i+1]=v);pwC[k]=ac.createPeriodicWave(re,im)}return pwC[k]};
@@ -859,24 +861,25 @@ function mkSus(sp,f){   // 持続音の声部をつくる
   if(sp.vib){V.lfo=ac.createOscillator();V.lg=ac.createGain();V.lfo.frequency.value=sp.vib[0];V.lg.gain.value=f*sp.vib[1];V.lfo.connect(V.lg);V.lg.connect(o.frequency);V.lfo.start()}
   o.start();return V;
 }
-const brightF=V=>V.f*(V.sp.bright[0]+V.sp.bright[1]*V.v);
-function susPitch(V,f,tc){
-  const t=ac.currentTime;V.f=f;V.o.frequency.setTargetAtTime(f,t,tc);
-  if(V.sp.lpx)V.fl.frequency.setTargetAtTime(f*V.sp.lpx,t,tc);
-  if(V.sp.bright)V.fl.frequency.setTargetAtTime(brightF(V),t,tc);
-  if(V.lg)V.lg.gain.setTargetAtTime(f*V.sp.vib[1],t,tc);
+const brightF=V=>Math.min(18000,V.f*(V.sp.bright[0]+V.sp.bright[1]*V.v));
+const setP=(prm,val,tc)=>{const t=ac.currentTime;if(tc){prm.setTargetAtTime(val,t,tc)}else{prm.cancelScheduledValues(t);prm.setValueAtTime(val,t)}};
+function susPitch(V,f,tc){   // tc=0 は一瞬で切り替え（いちばん上からいちばん下へ戻る層）
+  V.f=f;setP(V.o.frequency,f,tc);
+  if(V.sp.lpx)setP(V.fl.frequency,Math.min(18000,f*V.sp.lpx),tc);
+  if(V.sp.bright)setP(V.fl.frequency,brightF(V),tc);
+  if(V.lg)setP(V.lg.gain,f*V.sp.vib[1],tc);
 }
-function susLevel(V,v,tc){
-  const t=ac.currentTime;V.v=v;V.g.gain.setTargetAtTime(v*.4*V.sp.vol,t,tc);
+function susLevel(V,v,tc,w){
+  const t=ac.currentTime;V.v=v;V.g.gain.setTargetAtTime(v*w*.2*V.sp.vol,t,tc);
   if(V.sp.bright)V.fl.frequency.setTargetAtTime(brightF(V),t,tc);
 }
 function susStop(V){const t=ac.currentTime;V.g.gain.cancelScheduledValues(t);V.g.gain.setTargetAtTime(0,t,.03);V.o.stop(t+.2);if(V.lfo)V.lfo.stop(t+.2)}
-function hit(parts,f,v,prev){   // 打つ音を1回鳴らす。前の音は止めてから打つ（音が重なって大きくなりすぎないように）
+function hit(parts,f,v){   // 打つ音を1回鳴らす
   const t=ac.currentTime+.005,gs=[];
-  if(prev)prev.forEach(g=>g.gain.setTargetAtTime(0,t,.02));
   parts.forEach(([r,a,d])=>{
-    const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f*r;
-    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(a*v*.28,t+.006);g.gain.setTargetAtTime(0,t+.006,d);
+    const fr=f*r;if(fr>16000)return;
+    const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=fr;
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(a*v*.15,t+.006);g.gain.setTargetAtTime(0,t+.006,d);
     o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.01+d*5);gs.push(g);
   });
   return gs;
@@ -900,69 +903,58 @@ function guitarBody(){   // 木の胴の響き（低い共鳴と、弦の明る�
   fs.reduce((x,y)=>{x.connect(y);return y}).connect(ac.destination);
   gBody={ctx:ac,in:fs[0]};return fs[0];
 }
-function pluck(sp,f,v,prev){
-  const t=ac.currentTime+.005;
-  if(prev)prev.forEach(g=>g.gain.setTargetAtTime(0,t,.04));   // 同じ弦を弾き直すので、前の音は止める
-  const src=ac.createBufferSource(),g=ac.createGain();src.buffer=ksBuf(f*sp.oct,sp.T);
-  g.gain.value=v*.5;src.connect(g);g.connect(guitarBody());src.start(t);
+function pluck(sp,f,v){
+  if(f<40||f>5000)return [];
+  const t=ac.currentTime+.005,src=ac.createBufferSource(),g=ac.createGain();src.buffer=ksBuf(f,sp.T);
+  g.gain.value=v*.8;src.connect(g);g.connect(guitarBody());src.start(t);
   return [g];
 }
-function mkShep(sp){
-  const g=ac.createGain();g.gain.value=0;g.connect(ac.destination);
-  const S={g,os:[],gs:[],sp};
-  for(let k=0;k<sp.oct;k++){const o=ac.createOscillator(),a=ac.createGain();o.type='sine';a.gain.value=0;o.connect(a);a.connect(g);o.start();S.os.push(o);S.gs.push(a)}
-  shepSet(S,0);return S;
+const strike=(T,f,v)=>T.ks?pluck(T.ks,f,v):hit(T.hit,f,v);
+// 音色1つぶんの「声」: 持続音は6層を鳴らし続け、打つ音は打つたびに6層を鳴らす
+function mkVoice(T){
+  const X={T,c:T.c||600,n:null,last:-9,prev:[],L:[]};
+  if(T.sus)for(let k=0;k<SHK;k++){const lf=layerF(0,X.c,k);X.L.push({V:mkSus(T.sus,lf.f),pos:lf.pos})}
+  return X;
 }
-function shepSet(S,n){   // n: 半音の段数（上限なし）。12段で1周して元の音の並びに戻る
-  const t=ac.currentTime,ph=(((n%12)+12)%12)/12;
-  S.os.forEach((o,k)=>{const f=32.70*Math.pow(2,ph+k),w=Math.exp(-Math.pow(Math.log2(f/S.sp.c),2)/(2*S.sp.sd*S.sp.sd));o.frequency.setValueAtTime(f,t);S.gs[k].gain.setTargetAtTime(w*.3,t,.006)});
+function voiceStop(X){X.L.forEach(l=>susStop(l.V));X.prev.forEach(g=>g.gain.setTargetAtTime(0,ac.currentTime,.02))}
+function voiceSet(X,n,v){   // n=半音の段数（上限なし）、v=強さ 0〜1
+  const T=X.T,changed=n!==X.n;
+  if(T.sus){
+    X.L.forEach((l,k)=>{const lf=layerF(n,X.c,k);if(changed){susPitch(l.V,lf.f,lf.pos<l.pos?0:.015);l.pos=lf.pos}susLevel(l.V,v,.08,lf.w)});
+    X.n=n;
+  }else{
+    const now=ac.currentTime;
+    if(v>0&&(changed||now-X.last>.6-.4*v)){
+      X.last=now;const t=now+.005;X.prev.forEach(g=>g.gain.setTargetAtTime(0,t,.03));X.prev=[];   // 前の音は止めてから打つ
+      for(let k=0;k<SHK;k++){const lf=layerF(n,X.c,k);if(lf.w>.03)X.prev.push(...strike(T,lf.f,Math.max(.25,v)*lf.w))}
+    }
+    X.n=v>0?n:null;
+  }
 }
-function shepStop(S){const t=ac.currentTime;S.g.gain.cancelScheduledValues(t);S.g.gain.setTargetAtTime(0,t,.03);S.os.forEach(o=>o.stop(t+.2))}
-const strike=(T,f,v,prev)=>T.ks?pluck(T.ks,f,v,prev):hit(T.hit,f,v,prev);
 let tone=null;
 function ensureTone(){
   if(!ac)return;
-  const T=TIM[cfg.tim]||TIM.sine;
   if(tone&&tone.key===cfg.tim)return;
-  if(tone&&tone.V)susStop(tone.V);
-  if(tone&&tone.S)shepStop(tone.S);
-  if(tone&&tone.prev)tone.prev.forEach(g=>g.gain.setTargetAtTime(0,ac.currentTime,.02));
-  tone={key:cfg.tim,T,st:-1,last:0,V:T.sus?mkSus(T.sus,SCALE[0]):null,S:T.shep?mkShep(T.shep):null};
+  if(tone)voiceStop(tone);
+  tone=mkVoice(TIM[cfg.tim]||TIM.sine);tone.key=cfg.tim;
 }
 function setVol(m){
   if(!ac)return;
   if(!tone||tone.key!==cfg.tim)ensureTone();
   const v=cfg.snd?Math.min(1,Math.max(0,(m-cfg.thr)/1)):0;
-  const raw=cfg.pitch?Math.max(0,Math.floor((m-cfg.thr)/.05+1e-6)):0,st=Math.min(20,raw);
-  if(tone.S){   // 無限音階は上限なしで上がり続ける
-    tone.S.g.gain.setTargetAtTime(v*.4*tone.T.shep.vol,ac.currentTime,.08);
-    const n=Math.min(raw,400);if(n!==tone.st){tone.st=n;shepSet(tone.S,n)}
-  }else if(tone.V){
-    susLevel(tone.V,v,.08);
-    if(st!==tone.st){tone.st=st;susPitch(tone.V,SCALE[st],.015)}
-  }else{
-    const now=ac.currentTime;
-    if(v>0&&(st!==tone.st||now-tone.last>.6-.4*v)){tone.last=now;tone.prev=strike(tone.T,SCALE[st],Math.max(.25,v),tone.prev)}
-    tone.st=v>0?st:-1;
-  }
+  const n=cfg.pitch?Math.min(400,Math.max(0,Math.floor((m-cfg.thr)/.05+1e-6))):0;
+  voiceSet(tone,n,v);
 }
-// 設定: 音色の選択と試聴（ドレミファソラシドを上がる）
+// 設定: 音色の選択と試聴（半音ずつ2オクターブ上がる＝上がり続けて聞こえるか試せる）
 $('tim').innerHTML=Object.entries(TIM).map(([k,t])=>'<option value="'+k+'">'+t.label+'</option>').join('');
 if(!TIM[cfg.tim])cfg.tim='sine';
 $('tim').value=cfg.tim;
 $('tim').onchange=e=>{cfg.tim=e.target.value;saveCfg();ensureTone()};
 $('timt').onclick=()=>{
   ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();
-  const T=TIM[$('tim').value]||TIM.sine,notes=[0,2,4,5,7,9,11,12];
-  if(T.shep){   // 半音ずつ2オクターブ上げて、上がり続けて聞こえるのを試す
-    const S=mkShep(T.shep);S.g.gain.setTargetAtTime(.3,ac.currentTime,.02);
-    for(let i=0;i<=24;i++)setTimeout(()=>shepSet(S,i),i*130);
-    setTimeout(()=>shepStop(S),25*130+150);
-  }else if(T.sus){
-    const V=mkSus(T.sus,SCALE[0]);susLevel(V,.6,.02);
-    notes.forEach((n,i)=>setTimeout(()=>susPitch(V,SCALE[n],.01),i*180));
-    setTimeout(()=>susStop(V),notes.length*180+150);
-  }else{let pv=null;notes.forEach((n,i)=>setTimeout(()=>{pv=strike(T,SCALE[n],.8,pv)},i*180))}
+  const T=TIM[$('tim').value]||TIM.sine,X=mkVoice(T),dt=T.sus?130:200;
+  for(let i=0;i<=24;i++)setTimeout(()=>voiceSet(X,i,.6),i*dt);
+  setTimeout(()=>voiceStop(X),25*dt+(T.sus?100:600));
 };
 // drawing
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
