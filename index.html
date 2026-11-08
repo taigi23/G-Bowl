@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.12.0 (2026-11-08) オービス警告を進行方向優先に。前方約±30°のものだけ知らせ、向き（direction）が登録されていれば進む向きと合うものだけ。
+                     進行方向に約4km先の地域も先読み。自分の一覧のCSVに向き（度）を書けるように
   1.11.0 (2026-11-08) 更新の確認を追加。起動時と、アプリに戻ったとき（10分おき）に新しい版を確かめ、あれば上に「更新する」を表示。設定に「更新を確認」
   1.10.3 (2026-11-08) 注意書きを「このサイトを7日以上開かない場合…」に修正
   1.10.2 (2026-11-08) ログ一覧の注意書きの文言を変更（ブラウザ共通の表現に）
@@ -193,7 +195,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>警告する距離 <b><span id="odv">500</span> m</b></span><input type="range" id="od" min="200" max="1000" step="100" aria-label="オービス警告の距離"></div>
 <div class="set"><span>自分のオービス一覧 <small id="ocnt"></small></span><span><button id="oimp">読み込む</button> <button id="oclr">消す</button></span><input type="file" id="oimpf" accept=".csv,text/csv,text/plain" hidden></div>
 <p class="mcap" id="orbst"></p>
-<p class="mcap">オービスは、地図データ（OpenStreetMap）に登録された地点と、読み込んだ一覧（1行に「緯度,経度,名前」のCSV）を使います。地図データの登録は一部だけなので、すべてのオービスで鳴るわけではありません。</p>
+<p class="mcap">オービスは、地図データ（OpenStreetMap）に登録された地点と、読み込んだ一覧（1行に「緯度,経度,名前」または「緯度,経度,向き,名前」のCSV。向きは進む方角の度数で、北=0・東=90）を使います。進行方向の前方にあり、向きが登録されていれば自分の進む向きと合うものだけ知らせます。地図データの登録は一部だけなので、すべてのオービスで鳴るわけではありません。</p>
 <p class="mcap" id="stor"></p>
 <p class="mcap" id="ver"></p>
 <div class="btns" style="margin-top:4px"><button id="updc">更新を確認</button></div>
@@ -201,7 +203,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.11.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.12.0',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -217,9 +219,10 @@ let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
 let scorer=null,sclT=0,liveS=null,liveEvN=0,logPen=[],logEv=[],recEvN=0;
-let osmCams=[],userCams=[],camState={},orbNear=null,camBusy=false,camTry={},camStat='',needKey='',camCache={};
+let curHdg=null,hdgRef=null,osmCams=[],userCams=[],camState={},orbNear=null,camBusy=false,camTry={},camStat='',needKey='',camCache={};
 try{userCams=JSON.parse(localStorage.getItem('gm-orbis')||'[]')||[]}catch(e){userCams=[]}
-try{camCache=JSON.parse(localStorage.getItem('gm-camc')||'{}')||{}}catch(e){camCache={}}
+try{camCache=JSON.parse(localStorage.getItem('gm-camc2')||'{}')||{}}catch(e){camCache={}}
+try{localStorage.removeItem('gm-camc')}catch(e){}   // 向きの情報がない古いキャッシュは捨てて取り直す
 let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,recent=[],lastVal=null,valBusy=false,roadNoData=false,limStat={t:null,n:0,err:''};
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
@@ -600,7 +603,8 @@ function parseCams(t){
     let la=nums[0],lo=nums[1];
     if(Math.abs(la)>90&&Math.abs(lo)<=90){const t2=la;la=lo;lo=t2}
     if(Math.abs(la)>90||Math.abs(lo)>180||(la===0&&lo===0))return;
-    out.push({la,lo,name:txt.join(' ').slice(0,40)});
+    const dir=nums.length>=3&&nums[2]>=0&&nums[2]<=360?nums[2]%360:null;   // 3つ目の数字は向き（度、北=0 東=90）
+    out.push({la,lo,dir,name:txt.join(' ').slice(0,40)});
   });
   return out;
 }
@@ -608,7 +612,7 @@ const camKey=(la,lo)=>Math.floor(la*10)+'_'+Math.floor(lo*10);
 function saveCamCache(){
   const ks=Object.keys(camCache).sort((a,b)=>camCache[b].t-camCache[a].t);
   ks.slice(300).forEach(k=>delete camCache[k]);
-  try{localStorage.setItem('gm-camc',JSON.stringify(camCache))}catch(e){}
+  try{localStorage.setItem('gm-camc2',JSON.stringify(camCache))}catch(e){}
 }
 async function fetchCamBox(s,w,n,e){
   const q='[out:json][timeout:20];node["highway"="speed_camera"]('+[s,w,n,e].map(v=>v.toFixed(1)).join(',')+');out;';
@@ -619,16 +623,33 @@ async function fetchCamBox(s,w,n,e){
       const r=await fetch(u,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:ctl.signal});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const j=await r.json();
-      return (j.elements||[]).filter(x=>x.lat!=null).map(x=>{const t=x.tags||{};return{la:x.lat,lo:x.lon,name:(t.name||'')+(t.maxspeed?'（制限'+t.maxspeed+'）':'')}});
+      return (j.elements||[]).filter(x=>x.lat!=null).map(x=>{const t=x.tags||{};return{la:x.lat,lo:x.lon,dir:parseDir(t.direction),name:(t.name||'')+(t.maxspeed?'（制限'+t.maxspeed+'）':'')}});
     }catch(err){last=err}
     finally{clearTimeout(tm)}
   }
   throw last||new Error('取得失敗');
 }
+// 進行方向: iPhoneが出す向き（走行中）を使い、出ないときは15m以上動いた方向から求める
+const brg=(a,b,c,d)=>(Math.atan2((d-b)*Math.cos(a*Math.PI/180),c-a)*180/Math.PI+360)%360;
+const angDiff=(a,b)=>Math.abs(((a-b)%360+540)%360-180);
+function updHdg(la,lo,c){
+  if(c.heading!=null&&isFinite(c.heading)&&c.heading>=0&&(c.speed||0)>2){curHdg=c.heading;hdgRef={la,lo};return}
+  if(!hdgRef){hdgRef={la,lo};return}
+  if(dist(hdgRef.la,hdgRef.lo,la,lo)>=15){curHdg=brg(hdgRef.la,hdgRef.lo,la,lo);hdgRef={la,lo}}
+}
+// 地図データの向き（direction）: 度の数字か N/NE/E… の方角。forward/backward/both などは向きなしとして扱う
+function parseDir(v){
+  if(v==null)return null;v=String(v).trim().toUpperCase().split(/[;,]/)[0];
+  const n=Number(v);if(v!==''&&isFinite(n))return ((n%360)+360)%360;
+  const k=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'].indexOf(v);
+  return k<0?null:k*22.5;
+}
+const ahead=(la,lo,h,D)=>[la+Math.cos(h*Math.PI/180)*D/110540,lo+Math.sin(h*Math.PI/180)*D/(111320*Math.cos(la*Math.PI/180))];
 function maybeCams(la,lo){
   if(!cfg.orb)return;
-  const now=Date.now(),need=[];
-  for(const a of [-.03,.03])for(const b of [-.04,.04]){const k=camKey(la+a,lo+b);if(!need.includes(k))need.push(k)}
+  const now=Date.now(),need=[],add=(y,x)=>{for(const a of [-.03,.03])for(const b of [-.04,.04]){const k=camKey(y+a,x+b);if(!need.includes(k))need.push(k)}};
+  add(la,lo);
+  if(curHdg!=null){const p=ahead(la,lo,curHdg,4000);add(p[0],p[1])}   // 進行方向に約4km先の地域も先に読み込む
   const miss=need.filter(k=>!(camCache[k]&&now-camCache[k].t<7*864e5));
   setOsmCams(need);
   if(!miss.length||camBusy)return;
@@ -655,6 +676,12 @@ function checkCams(la,lo){
   osmCams.concat(userCams).forEach(c=>{
     const k=c.la.toFixed(5)+','+c.lo.toFixed(5),d=dist(la,lo,c.la,c.lo),st=camState[k]||(camState[k]={d:1e9,done:false});
     if(d>cfg.orbDist*1.5)st.done=false;                              // 十分離れたら、次に近づいたときにまた知らせる
+    let fwd=true;
+    if(curHdg!=null){
+      if(d>40&&angDiff(brg(la,lo,c.la,c.lo),curHdg)>35)fwd=false;    // 進行方向の前方（約±30°）にあるものだけ
+      if(c.dir!=null&&angDiff(c.dir,curHdg)>60)fwd=false;            // 向きが登録されていれば、自分の進む向きと合うものだけ
+    }
+    if(!fwd){st.d=d;return}
     if(d<=cfg.orbDist&&d<st.d-2&&!st.done){st.done=true;orbAlert()}  // 近づいているときだけ鳴らす
     st.d=d;
     if(d<=cfg.orbDist&&(!nb||d<nb.d))nb={d,name:c.name};
@@ -684,7 +711,7 @@ function showOrbStat(){
     :Object.keys(camCache).length?'地図データのオービス：周辺 '+osmCams.length+'件（保存済みのデータ）':'「開始」でGPSが動くと、周辺のオービスの地図データを取得します。';
 }
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null;curHdg=null;hdgRef=null}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
@@ -697,7 +724,7 @@ function startGps(){
       if(LM)liveAdd(q,trk[trk.length-2]);
       pushRecent(c.latitude,c.longitude);
       queryLimit(c.latitude,c.longitude);
-      maybeCams(c.latitude,c.longitude);checkCams(c.latitude,c.longitude);
+      updHdg(c.latitude,c.longitude,c);maybeCams(c.latitude,c.longitude);checkCams(c.latitude,c.longitude);
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
 }
