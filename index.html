@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.10.3 (2026-11-08) 注意書きを「このサイトを7日以上開かない場合…」に修正
+  1.10.2 (2026-11-08) ログ一覧の注意書きの文言を変更（ブラウザ共通の表現に）
   1.10.1 (2026-11-08) ログ一覧の注意書きから「ホーム画面に追加…」の一文を削除
   1.10.0 (2026-11-08) メーターのタブ名を「G-Bowl」に変更。メーター画面の下に「ログの空き容量」（残り時間の目安とバー）を表示。
                      Safariの7日間ルールの注意をログ一覧に表示
@@ -139,7 +141,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="mcap">緑の丸＝開始　赤の丸＝オービス　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="mfol">現在地</button><button id="mall">全体表示</button><button id="clr">軌跡を消す</button></div>
 <h2>保存したログ</h2>
-<p class="note">⚠ Safariは、このサイトを7日以上開かないと、保存したログを消すことがあります。大事なログは「CSV」で書き出しておいてください。</p>
+<p class="note">⚠ このサイトを7日以上開かない場合、保存したログが消えることがあります。大事なログは「CSV」で書き出しておいてください。</p>
 <div class="btns" style="margin:0 0 6px"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
 <ul id="list"></ul>
 </section>
@@ -193,7 +195,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.10.1',APP_DATE='2026-11-07';
+const APP_VERSION='1.10.3',APP_DATE='2026-11-07';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
