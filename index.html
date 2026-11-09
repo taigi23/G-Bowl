@@ -4,6 +4,9 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.19.0 (2026-11-09) 3軸対応: 0点合わせで重力の向きを覚え、寝かせ置き・立て置き・斜め置き・横向きのどれでも左右／前後／上下のGに分ける。
+                     置き方を自動で判定（前回の0点を保存。止まっていて置き方が変わっていたら合わせ直す）。上下Gと標高（GPS）を表示・記録・グラフ化・CSVに追加
+  1.18.1 (2026-11-09) 修正: ブラウザを閉じて開き直すと音が出なくなることがある。戻ったときに音を再開し、だめなら画面のタップで再開（案内も表示）
   1.18.0 (2026-11-09) G警告音の音階をなめらかに（Gに比例して連続的に上がる無限音階）。設定「音階の変え方」で なめらか／半音ずつ を選べる
   1.17.0 (2026-11-09) 停車中（GPS車速2km/h未満）はG警告音を止める。採点に上達のアドバイスを追加（横・縦のジャーク、トゲ、＋型）。
                      オービス警告を音声でも知らせる（「この先、スピードに注意してください」。設定でオン／オフ・試聴）
@@ -66,7 +69,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .bw{position:relative}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
-#g,#vg{height:350px;border-radius:10px;margin-top:10px}
+#g,#vg{height:518px;border-radius:10px;margin-top:10px}
 #vg{touch-action:pan-y;cursor:crosshair;-webkit-user-select:none;user-select:none}
 #mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
 .mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
@@ -81,7 +84,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .big{text-align:center;margin:12px 0 4px;font-variant-numeric:tabular-nums}
 .big b{font-size:3.4rem;letter-spacing:-.02em}
 .big span{color:var(--mut);margin-left:4px}
-.row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0;font-variant-numeric:tabular-nums}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;font-variant-numeric:tabular-nums}
 .row div{background:var(--panel);border-radius:10px;padding:7px 8px}
 .row small{display:block;color:var(--mut);font-size:.68rem}
 .row strong{font-size:1rem}
@@ -142,9 +145,11 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="row">
 <div><small>左右</small><strong id="gx">0.00</strong></div>
 <div><small>前後</small><strong id="gy">0.00</strong></div>
+<div><small>上下</small><strong id="gz">0.00</strong></div>
 <div><small>最大G</small><strong id="pk">0.00</strong></div>
 <div><small>km/h</small><strong id="sp">--</strong></div>
 <div><small>制限</small><strong id="lim">--</strong></div>
+<div><small>標高 m</small><strong id="alt">--</strong></div>
 </div>
 <p id="orb" class="orb" role="status" hidden></p>
 <p id="scl" class="mcap" hidden></p>
@@ -223,7 +228,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.18.0',APP_DATE='2026-11-09';
+const APP_VERSION='1.19.0',APP_DATE='2026-11-09';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -235,9 +240,9 @@ let cfg={fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
-let raw={x:0,y:0},off={x:0,y:0},sg={x:0,y:0},peak=0,trail=[],sensor=false,S=.4;
+let raw={x:0,y:0,z:0},gf=null,basis=null,calN=0,sg={x:0,y:0,z:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
-let gps={sp:null,lat:null,lon:null},wid=null,ac=null,V=null,saved=[];
+let gps={sp:null,lat:null,lon:null,alt:null},wid=null,ac=null,V=null,saved=[];
 let scorer=null,sclT=0,liveS=null,liveEvN=0,logPen=[],logEv=[],recEvN=0;
 let curHdg=null,hdgRef=null,osmCams=[],userCams=[],camState={},orbNear=null,camBusy=false,camTry={},camStat='',needKey='',camCache={};
 try{userCams=JSON.parse(localStorage.getItem('gm-orbis')||'[]')||[]}catch(e){userCams=[]}
@@ -246,7 +251,7 @@ try{localStorage.removeItem('gm-camc')}catch(e){}   // 向きの情報がない�
 let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,recent=[],lastVal=null,valBusy=false,roadNoData=false,limStat={t:null,n:0,err:''};
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,350);fit(vc);fit(vg,350);fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
+function size(){fit(cv);fit(gc,518);fit(vc);fit(vg,518);fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
 let LM=null,VM=null;
 addEventListener('resize',size);size();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
@@ -310,8 +315,8 @@ $('oimpf').onchange=async e=>{
 };
 $('oclr').onclick=()=>{if(!userCams.length||!confirm('読み込んだオービスの一覧を消しますか？'))return;userCams=[];try{localStorage.removeItem('gm-orbis')}catch(err){}ocnt();drawCams()};
 $('thr').oninput=e=>{cfg.thr=Math.round(+e.target.value*10)/10;$('thrv').textContent=cfg.thr.toFixed(1);saveCfg()};
-$('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();calibrate();mirror(true,false)};
-$('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();calibrate();mirror(false,true)};
+$('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();mirror(true,false)};
+$('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();mirror(false,true)};
 // 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
 function mirror(mx,my){
   if(mx){sg.x=-sg.x;trail.forEach(p=>{p.x=-p.x});hist.forEach(p=>{p.x=-p.x});log.forEach(r=>{r[1]=-r[1]})}
@@ -327,11 +332,48 @@ function mirror(mx,my){
 }
 $('fc').oninput=e=>{cfg.fc=+e.target.value;$('fcv').textContent=cfg.fc;saveCfg()};
 // sensor
+// 3軸センサー: 端末ごとの符号の違い（iPhoneは逆向き）をそろえ、重力に対して上向きを＋とする向きで扱う
 function onMotion(e){
   const a=e.accelerationIncludingGravity;
   if(!a||a.x==null||a.y==null)return;
-  if(!sensor){sensor=true;msg('センサー動作中。スマホを動かない状態にして「0点合わせ」を押すと基準になります。')}
-  raw.x=a.x/9.81;raw.y=a.y/9.81;
+  const sg_=ios?-1:1;
+  raw.x=sg_*a.x/9.81;raw.y=sg_*a.y/9.81;raw.z=sg_*(a.z||0)/9.81;
+  if(!gf)gf={x:raw.x,y:raw.y,z:raw.z};else{gf.x+=(raw.x-gf.x)*.05;gf.y+=(raw.y-gf.y)*.05;gf.z+=(raw.z-gf.z)*.05}   // 約0.3秒の平均（0点合わせ用）
+  if(!sensor){sensor=true;calN=0}
+  if(++calN===45)autoCal();   // 開始から約0.7秒後に置き方を確認
+}
+// 置き方の補正: 0点合わせのときの重力の向き＝「上」。スマホの左右の辺を水平にならした向き＝「右」。上×右＝「前」。
+// 寝かせ置き・立て置き（画面が運転席向き）・斜め置き・横向きのどれでも、左右／前後／上下のGに分けられる
+function makeBasis(g){
+  const n=Math.hypot(g.x,g.y,g.z);if(n<.5||n>1.5)return null;
+  const u={x:g.x/n,y:g.y/n,z:g.z/n};
+  const ax=Math.abs(u.x)<.7?{x:1,y:0,z:0}:{x:0,y:-Math.sign(u.x),z:0};   // 横向き（スマホの左右の辺が縦）のときは上下の辺を使う
+  const k=ax.x*u.x+ax.y*u.y+ax.z*u.z;
+  let ex={x:ax.x-k*u.x,y:ax.y-k*u.y,z:ax.z-k*u.z};const l=Math.hypot(ex.x,ex.y,ex.z);ex={x:ex.x/l,y:ex.y/l,z:ex.z/l};
+  const fw={x:u.y*ex.z-u.z*ex.y,y:u.z*ex.x-u.x*ex.z,z:u.x*ex.y-u.y*ex.x};
+  return{g:{x:g.x,y:g.y,z:g.z},u,ex,fw};
+}
+function poseName(B){
+  const u=B.u;
+  if(Math.abs(u.x)>=.7)return'横向き';
+  if(Math.abs(u.z)>.9)return'寝かせ置き';
+  if(Math.abs(u.y)>.9)return'立て置き';
+  return'斜め置き（約'+Math.round(Math.acos(Math.min(1,Math.abs(u.z)))*180/Math.PI)+'°）';
+}
+function calibrate(){
+  const g=gf||raw,B=makeBasis(g);
+  if(!B){msg('置き方を読み取れませんでした。スマホを動かさずに、もう一度「0点合わせ」を押してください。');return false}
+  basis=B;cfg.g0=B.g;saveCfg();
+  if(gf)env.fill(0);
+  msg('0点を合わせました（'+poseName(B)+'）。');
+  return true;
+}
+function autoCal(){   // 前回の0点がなければ自動で合わせる。置き方が大きく変わっていて、しかも止まっているときも合わせ直す
+  const g=gf||raw,n=Math.hypot(g.x,g.y,g.z);
+  if(!basis){if(calibrate())msg('置き方を自動で合わせました（'+poseName(basis)+'）。止まった状態で「0点合わせ」を押すとより正確です。');return}
+  const u=basis.u,c=(g.x*u.x+g.y*u.y+g.z*u.z)/n;
+  if(c<Math.cos(25*Math.PI/180)&&Math.abs(n-1)<.05){if(calibrate())msg('置き方が変わったので、0点を合わせ直しました（'+poseName(basis)+'）。')}
+  else msg('前回の0点（'+poseName(basis)+'）を使っています。置き方を変えたら、止まった状態で「0点合わせ」を押してください。');
 }
 let running=false,wl=null;
 async function start(){
@@ -349,14 +391,14 @@ async function start(){
   }catch(e){msg('センサーを開始できませんでした。');return false}
 }
 function setRun(on){running=on;const b=$('start');b.textContent=on?'停止':'開始';b.classList.toggle('p',!on);b.classList.toggle('on',on)}
-function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0};try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
-const calibrate=()=>{off={x:sxv()*raw.x,y:syv()*raw.y}};
+function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
+if(cfg.g0)basis=makeBasis(cfg.g0);
 $('start').onclick=async()=>{
   if(running){stopAll();return}
   setRun(true);
   if(await start()){startGps();liveS=newScorer();liveEvN=0}else setRun(false);
 };
-$('cal').onclick=()=>{calibrate();msg('現在の姿勢を0に合わせました。')};
+$('cal').onclick=()=>{if(!sensor){msg('先に「開始」を押してください。');return}calibrate()};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
 $('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
 $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if(p)LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))};
@@ -430,7 +472,7 @@ function addLog(rows,name,sc,pen,vm){
 }
 function exportCsv(L){
   const f=v=>v==null?'':v;
-  const t='秒,左右G,前後G,合成G,km/h,緯度,経度\n'+L.rows.map(r=>r.map(f).join(',')).join('\n');
+  const t='秒,左右G,前後G,合成G,km/h,緯度,経度,上下G,標高m\n'+L.rows.map(r=>{const a=r.slice(0,9);while(a.length<9)a.push(null);return a.map(f).join(',')}).join('\n');
   const d=new Date(L.id),p2=n=>String(n).padStart(2,'0');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));
@@ -445,7 +487,7 @@ function parseCsv(t){
     const c=l.trim().split(',');if(c.length<3)return;
     const tt=n(c[0]),x=n(c[1]),y=n(c[2]);if(tt==null||x==null||y==null)return;
     const m=n(c[3]);
-    rows.push([tt,x,y,m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6])]);
+    rows.push([tt,x,y,m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8])]);
   });
   return rows;
 }
@@ -535,7 +577,7 @@ function drawCam(){
   let bx=sg.x/S2,by=sg.y/S2,l=Math.hypot(bx,by);if(l>1){bx/=l;by/=l}
   c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,w*.06,0,7);c.fill();
   $('camg').textContent=Math.hypot(sg.x,sg.y).toFixed(2);
-  $('camd').textContent='左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　最大 '+peak.toFixed(2);
+  $('camd').textContent='左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　上下 '+sg.z.toFixed(2)+'　最大 '+peak.toFixed(2);
   $('cams').textContent=(gps.sp==null?'--':Math.round(gps.sp))+' km/h　制限 '+limTxt();
   $('camst').textContent=running?'停止':'開始';
   const rb=$('camrec');rb.textContent=rec?'記録停止':'記録開始';rb.classList.toggle('on',rec);
@@ -751,13 +793,13 @@ function showOrbStat(){
     :Object.keys(camCache).length?'地図データのオービス：周辺 '+osmCams.length+'件（保存済みのデータ）':'「開始」でGPSが動くと、周辺のオービスの地図データを取得します。';
 }
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null;curHdg=null;hdgRef=null}
+function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null,alt:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null;curHdg=null;hdgRef=null}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
   wid=navigator.geolocation.watchPosition(p=>{
     const c=p.coords;
-    gps={sp:c.speed==null?null:c.speed*3.6,lat:c.latitude,lon:c.longitude};
+    gps={sp:c.speed==null?null:c.speed*3.6,lat:c.latitude,lon:c.longitude,alt:c.altitude==null||!isFinite(c.altitude)?null:c.altitude};
     if(c.accuracy<=100){
       const q={la:c.latitude,lo:c.longitude,m:curM};
       trk.push(q);curM=0;if(trk.length>20000)trk.shift();
@@ -977,6 +1019,28 @@ function setVol(m){
   if(cfg.pmode==='step')voiceSet(tone,Math.floor(x+1e-6),v,.015);
   else voiceSet(tone,Math.round(x*100)/100,v,.04);   // なめらか: Gに比例して連続的に上がる
 }
+// 音の復帰: iPhoneはブラウザを閉じたり別のアプリに切り替えると音を止める（suspended / interrupted）。
+// 戻ったときに再開を試み、だめなら次に画面をタップしたときに再開する。音の仕組みごと壊れていたら作り直す
+let audioHint=false;
+function resumeAudio(fromTap){
+  if(!ac)return;
+  if(ac.state==='closed'){
+    if(!fromTap)return;
+    try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){return}
+    tone=null;gBody=null;for(const k in pwC)delete pwC[k];for(const k in ksC)delete ksC[k];
+  }
+  if(ac.state!=='running'){try{ac.resume().then(()=>{if(ac.state==='running'&&audioHint){audioHint=false;msg('音が戻りました。')}}).catch(()=>{})}catch(e){}}
+  if(fromTap)try{unlockSpeech()}catch(e){}
+  if(ac.state==='running')ensureTone();
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeAudio(false)});
+addEventListener('pageshow',()=>resumeAudio(false));
+addEventListener('focus',()=>resumeAudio(false));
+['pointerdown','touchend','click'].forEach(n=>document.addEventListener(n,()=>{if(ac&&ac.state!=='running')resumeAudio(true)},true));
+setInterval(()=>{   // 計測中に音が止まっていたら再開を試み、だめなら案内を出す
+  if(!running||!cfg.snd||!ac||document.hidden)return;
+  if(ac.state!=='running'){resumeAudio(false);if(!audioHint){audioHint=true;msg('音が止まっています。画面のどこかをタップすると音が戻ります。')}}
+},1500);
 // 設定: 音色の選択と試聴（半音ずつ2オクターブ上がる＝上がり続けて聞こえるか試せる）
 $('tim').innerHTML=Object.entries(TIM).map(([k,t])=>'<option value="'+k+'">'+t.label+'</option>').join('');
 if(!TIM[cfg.tim])cfg.tim='sine';
@@ -1019,16 +1083,16 @@ function drawBall(cvs,c,sc){
 }
 // ログのグラフ: 左右G / 前後G / 車速 / 減点 の4段
 function drawPanels(c,w,pts,full,cur,win){
-  const H=84,TS=14,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak'),bg=css('--panel');
-  c.clearRect(0,0,w,H*4+TS);
+  const H=84,TS=14,NP=6,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak'),bg=css('--panel');
+  c.clearRect(0,0,w,H*NP+TS);
   if(!n)return;
   const za=full&&win?win.a:0,zb=full&&win?win.b:Math.max(n-1,1);   // 表示する範囲（拡大中はその一部）
   const px=i=>full?(i-za)/Math.max(zb-za,1e-6)*w:w-(n-1-i)/(N-1)*w;
   const i0=full?Math.max(0,Math.floor(za)-1):0,i1=full?Math.min(n-1,Math.ceil(zb)+1):n-1;
   const niceR=v=>[0.3,0.5,0.8,1.2,2,4].find(r=>r>=v)||4;
-  let ax=0,ay=0,smax=0;
-  pts.forEach(p=>{ax=Math.max(ax,Math.abs(p.x));ay=Math.max(ay,Math.abs(p.y));if(p.sp!=null)smax=Math.max(smax,p.sp)});
-  const rx=niceR(ax*1.1),ry=niceR(ay*1.1),rs=Math.max(40,Math.ceil(smax*1.1/20)*20),ss=rs<=60?20:rs<=120?40:rs<=200?50:100;
+  let ax=0,ay=0,az=0,smax=0,amin=null,amax=null;
+  pts.forEach(p=>{ax=Math.max(ax,Math.abs(p.x));ay=Math.max(ay,Math.abs(p.y));if(p.z!=null)az=Math.max(az,Math.abs(p.z));if(p.sp!=null)smax=Math.max(smax,p.sp);if(p.alt!=null){amin=amin==null?p.alt:Math.min(amin,p.alt);amax=amax==null?p.alt:Math.max(amax,p.alt)}});
+  const rx=niceR(ax*1.1),ry=niceR(ay*1.1),rz=niceR(az*1.1),rs=Math.max(40,Math.ceil(smax*1.1/20)*20),ss=rs<=60?20:rs<=120?40:rs<=200?50:100;
   const ci=full?(cur!=null&&cur>=0?Math.min(cur,n-1):null):n-1,cp=ci!=null?pts[ci]:null;   // 右上に値を出す点（再生はカーソル、ライブは最新）
   // 時間の目盛り（再生＝経過時間、ライブ＝何秒前）
   const ticks=[];
@@ -1047,7 +1111,7 @@ function drawPanels(c,w,pts,full,cur,win){
     c.strokeStyle=ring;c.lineWidth=1;c.globalAlpha=.55;
     ticks.forEach(t=>{const X=Math.round(t.x)+.5;c.beginPath();c.moveTo(X,top+15);c.lineTo(X,top+H);c.stroke()});
     c.globalAlpha=1;
-    if(k<3){c.strokeStyle=ring;c.beginPath();c.moveTo(0,top+H-.5);c.lineTo(w,top+H-.5);c.stroke()}
+    if(k<NP-1){c.strokeStyle=ring;c.beginPath();c.moveTo(0,top+H-.5);c.lineTo(w,top+H-.5);c.stroke()}
     draw(top);
     c.font='9px system-ui';c.textAlign='left';c.fillStyle=mut;c.lineJoin='round';
     yl.forEach(([y,l])=>halo(l,3,y+3));
@@ -1068,12 +1132,19 @@ function drawPanels(c,w,pts,full,cur,win){
   });
   gPanel(0,'x',(full?'':'過去30秒　')+'左右G',rx);
   gPanel(1,'y','前後G',ry);
-  panel(2,'車速 km/h',cp?(cp.sp==null?'-- km/h':Math.round(cp.sp)+' km/h'):null,top=>{
+  gPanel(2,'z','上下G',rz);
+  panel(3,'車速 km/h',cp?(cp.sp==null?'-- km/h':Math.round(cp.sp)+' km/h'):null,top=>{
     const base=top+H-6,sc=(H-24)/rs;
     for(let v=0;v<=rs;v+=ss)grid(base-v*sc,String(v),false);
     line('sp',base,sc);
   });
-  panel(3,'減点　棒＝ジャーク ▲トゲ ■＋型',cp?'ジャーク '+(cp.pj||0).toFixed(2)+(cp.ev==='spike'?' ▲':cp.ev?' ■':''):null,top=>{
+  panel(4,'標高 m',cp?(cp.alt==null?'-- m':Math.round(cp.alt)+' m'):null,top=>{
+    if(amin==null){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('標高のデータがありません',w/2,top+H/2+6);return}
+    const sp=Math.max(1,amax-amin),st=[1,2,5,10,20,50,100,200,500,1000].find(x=>sp/x<=3)||2000,lo=Math.floor(amin/st)*st,hi=Math.max(lo+st,Math.ceil(amax/st)*st),base=top+H-6,sc=(H-24)/(hi-lo);
+    for(let v=lo;v<=hi+1e-9;v+=st)grid(base-(v-lo)*sc,String(v),false);
+    line('alt',base+lo*sc,sc);
+  });
+  panel(5,'減点　棒＝ジャーク ▲トゲ ■＋型',cp?'ジャーク '+(cp.pj||0).toFixed(2)+(cp.ev==='spike'?' ▲':cp.ev?' ■':''):null,top=>{
     const base=top+H-6,hh=H-36,bw=Math.max(1.5,full?w/Math.max(zb-za+1,1):w/N);
     grid(base,'0',false);grid(base-hh/2,'0.5',true);grid(base-hh,'1',false);
     c.fillStyle=pc;c.globalAlpha=.6;
@@ -1087,8 +1158,8 @@ function drawPanels(c,w,pts,full,cur,win){
   });
   // 時間のラベル（いちばん下の帯）
   c.fillStyle=mut;c.font='9px system-ui';c.textAlign='center';
-  ticks.forEach(t=>{const lb=tl(t.t),hw=c.measureText(lb).width/2;c.fillText(lb,Math.min(w-hw-1,Math.max(hw+1,t.x)),H*4+TS-3)});
-  if(full&&cur!=null){c.strokeStyle=fg;c.lineWidth=1.5;c.beginPath();c.moveTo(px(cur),0);c.lineTo(px(cur),H*4);c.stroke()}
+  ticks.forEach(t=>{const lb=tl(t.t),hw=c.measureText(lb).width/2;c.fillText(lb,Math.min(w-hw-1,Math.max(hw+1,t.x)),H*NP+TS-3)});
+  if(full&&cur!=null){c.strokeStyle=fg;c.lineWidth=1.5;c.beginPath();c.moveTo(px(cur),0);c.lineTo(px(cur),H*NP);c.stroke()}
 }
 const gcol=m=>'hsl('+(220-220*Math.min(m/.6,1))+',100%,36%)';
 function makeMap(el){
@@ -1140,7 +1211,7 @@ function openL(L){
     cur.push(last);
   });
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
-  const pts=rows.map((r,i)=>({t:r[0],x:r[1],y:r[2],m:r[3],sp:r[4],pj:pen.pj[i]||0,ev:null}));
+  const pts=rows.map((r,i)=>({t:r[0],x:r[1],y:r[2],m:r[3],sp:r[4],z:r[7]==null?null:r[7],alt:r[8]==null?null:r[8],pj:pen.pj[i]||0,ev:null}));
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
   vClearVid();
   V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null,z:{a:0,b:rows.length-1}};
@@ -1263,7 +1334,7 @@ function vframe(dt){
   if(vg.clientWidth)drawPanels(vgx,vg.clientWidth,V.pts,true,V.i,V.z);
   const cp=V.cur[V.i];
   if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map);if(V.play&&!VM.map.getBounds().contains([cp.la,cp.lo]))VM.map.panTo([cp.la,cp.lo])}
-  $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h');
+  $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h')+(r[8]==null?'':'　標高'+Math.round(r[8])+'m');
 }
 // ===== 採点 =====
 // 1) ジャーク: 約2Hzより速い揺れ（路面・振動・センサーのノイズ）を2段ローパスで取り除き、
@@ -1355,13 +1426,18 @@ function scoreHtml(sc){
 }
 // main loop
 function loop(now){
-  let tx=0,ty=0;
-  if(sensor){tx=sxv()*raw.x-off.x;ty=syv()*raw.y-off.y}
+  let tx=0,ty=0,tz=0;
+  if(sensor&&basis){   // 0点の重力を引いた残り＝車の加速度。それを右・前・上の向きに分ける
+    const B=basis,d={x:raw.x-B.g.x,y:raw.y-B.g.y,z:raw.z-B.g.z};
+    const lat=d.x*B.ex.x+d.y*B.ex.y+d.z*B.ex.z,lon=d.x*B.fw.x+d.y*B.fw.y+d.z*B.fw.z;
+    tz=d.x*B.u.x+d.y*B.u.y+d.z*B.u.z;
+    tx=-lat*(cfg.fx?-1:1);ty=lon*(cfg.fy?-1:1);   // ボールは体が押される向き（右カーブ→左、加速→下）
+  }
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
   if(rec&&scorer&&sensor)feedScore(scorer,tx,ty,dt);
   if(liveS&&sensor)feedScore(liveS,tx,ty,dt);
   const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
-  sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;
+  sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;sg.z+=(tz-sg.z)*al;
   const m=Math.hypot(sg.x,sg.y);
   if(m>peak)peak=m;
   curM=Math.max(curM,m);
@@ -1374,9 +1450,9 @@ function loop(now){
   if(now-lastS>=100){
     lastS=now;
     let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
-    hist.push({t:now/1000,x:sg.x,y:-sg.y,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev});if(hist.length>N)hist.shift();
+    hist.push({t:now/1000,x:sg.x,y:-sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev});if(hist.length>N)hist.shift();
     if(rec){
-      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon]);
+      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt]);
       logPen.push(scorer?+takeP(scorer).toFixed(2):0);
       if(scorer)for(;recEvN<scorer.ev.length;recEvN++)logEv.push([log.length-1,scorer.ev[recEvN].type]);
     }
@@ -1385,6 +1461,8 @@ function loop(now){
     $('mag').textContent=m.toFixed(2);
     $('gx').textContent=sg.x.toFixed(2);
     $('gy').textContent=(-sg.y).toFixed(2);
+    $('gz').textContent=sg.z.toFixed(2);
+    $('alt').textContent=gps.alt==null?'--':Math.round(gps.alt);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
     $('lim').textContent=limTxt();
