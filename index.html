@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.17.0 (2026-11-09) 停車中（GPS車速2km/h未満）はG警告音を止める。採点に上達のアドバイスを追加（横・縦のジャーク、トゲ、＋型）。
+                     オービス警告を音声でも知らせる（「この先、スピードに注意してください」。設定でオン／オフ・試聴）
   1.16.0 (2026-11-08) すべての音色を無限音階に（同じ音色を1オクターブずつ6層重ねる）。単独の「無限音階」音色はサイン波に統合
   1.15.0 (2026-11-08) 音色に「無限音階（シェパードトーン）」を追加。Gが上がるほど半音ずつ上がり続ける（上限なし）
   1.14.1 (2026-11-08) 設定の「更新を確認」で新しい版が見つかったら、その場で更新できるように。
@@ -121,6 +123,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .set{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--ring)}
 .set input[type=checkbox]{width:22px;height:22px}
 .set input[type=range]{width:45%}
+.adv{margin-top:10px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,currentColor 8%,transparent);font-size:13px;line-height:1.6;text-align:left}
+.adv ul{margin:6px 0 0;padding-left:1.2em}.adv li+li{margin-top:4px}.adv p{margin:6px 0 0}
+.adv-live{font-weight:600}
 </style>
 </head>
 <body>
@@ -142,6 +147,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </div>
 <p id="orb" class="orb" role="status" hidden></p>
 <p id="scl" class="mcap" hidden></p>
+<p id="adv" class="mcap adv-live" hidden></p>
 <div class="btns">
 <button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
@@ -190,7 +196,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <canvas id="camrc" aria-hidden="true" style="position:fixed;left:-10000px;top:0;width:10px;height:10px"></canvas>
 <dialog id="st">
 <h2 style="margin-top:0">設定</h2>
-<div class="set"><span>警告音</span><input type="checkbox" id="snd" aria-label="警告音"></div>
+<div class="set"><span>警告音 <small>停車中（2km/h未満）は鳴らしません</small></span><input type="checkbox" id="snd" aria-label="警告音"></div>
 <div class="set"><span>制限速度超過で通知</span><input type="checkbox" id="over" aria-label="速度超過の通知"></div>
 <div class="set"><span>通知のタイミング <b>+<span id="mgv">0</span> km/h</b></span><input type="range" id="mg" min="0" max="50" step="5" aria-label="制限速度からの超過量"></div>
 <div class="set"><span>音が鳴り始めるG <b><span id="thrv">0.5</span> G</b></span><input type="range" id="thr" min="0" max="1" step="0.1" aria-label="音が鳴り始めるG"></div>
@@ -203,6 +209,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="mcap" id="limst"></p>
 <p class="mcap">制限の欄：「…」取得中　「×」取得エラー　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
 <div class="set"><span>オービス警告</span><input type="checkbox" id="orbon" aria-label="オービス警告"></div>
+<div class="set"><span>音声でも知らせる <small>「この先、スピードに注意してください」</small></span><span><button id="orbvt">試聴</button> <input type="checkbox" id="orbv" aria-label="オービスを音声で知らせる"></span></div>
 <div class="set"><span>警告する距離 <b><span id="odv">500</span> m</b></span><input type="range" id="od" min="200" max="1000" step="100" aria-label="オービス警告の距離"></div>
 <div class="set"><span>自分のオービス一覧 <small id="ocnt"></small></span><span><button id="oimp">読み込む</button> <button id="oclr">消す</button></span><input type="file" id="oimpf" accept=".csv,text/csv,text/plain" hidden></div>
 <p class="mcap" id="orbst"></p>
@@ -214,7 +221,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.16.0',APP_DATE='2026-11-07';
+const APP_VERSION='1.17.0',APP_DATE='2026-11-09';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -286,6 +293,9 @@ cfg.orb=cfg.orb!==false;cfg.orbDist=Math.min(1000,Math.max(200,+cfg.orbDist||500
 $('orbon').checked=cfg.orb;$('od').value=cfg.orbDist;$('odv').textContent=cfg.orbDist;ocnt();
 $('orbon').onchange=e=>{cfg.orb=e.target.checked;saveCfg();if(!cfg.orb)orbNear=null;drawCams()};
 $('od').oninput=e=>{cfg.orbDist=+e.target.value;$('odv').textContent=cfg.orbDist;saveCfg()};
+cfg.orbVoice=cfg.orbVoice!==false;$('orbv').checked=cfg.orbVoice;
+$('orbv').onchange=e=>{cfg.orbVoice=e.target.checked;saveCfg()};
+$('orbvt').onclick=()=>speakJa(ORB_SAY);
 $('oimp').onclick=()=>$('oimpf').click();
 $('oimpf').onchange=async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
@@ -322,7 +332,7 @@ function onMotion(e){
 let running=false,wl=null;
 async function start(){
   try{
-    ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();ensureTone();
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume();ensureTone();unlockSpeech();
     if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
       const r=await DeviceMotionEvent.requestPermission();
       if(r!=='granted'){msg('モーションセンサーの許可が必要です。');return false}
@@ -453,7 +463,7 @@ $('rec').onclick=()=>{
     if(vp)vp.then(bl=>gotVid(bl,vname));
   }else msg('記録を破棄しました。');
 };
-function logScore(s){try{if(s.score===undefined)s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
+function logScore(s){try{if(s.score===undefined||(s.score&&s.score.lat===undefined))s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
 function renderList(){
   if(!logsReady){$('list').innerHTML='<li><small>ログを読み込み中…</small></li>';return}
   $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+(s.vid?'　動画あり':'')+(logScore(s)?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
@@ -703,7 +713,19 @@ function checkCams(la,lo){
   orbNear=nb;
 }
 const orbTxt=()=>'オービス注意　あと '+Math.round(orbNear.d/10)*10+' m'+(orbNear.name?'　'+orbNear.name:'');
+function speakJa(text){
+  try{
+    if(!('speechSynthesis' in window))return;
+    const u=new SpeechSynthesisUtterance(text);u.lang='ja-JP';u.rate=1;
+    const v=speechSynthesis.getVoices().find(x=>/^ja/i.test(x.lang));if(v)u.voice=v;
+    u.onstart=()=>{speaking=true};u.onend=u.onerror=()=>{speaking=false};
+    speechSynthesis.cancel();speechSynthesis.speak(u);
+  }catch(e){speaking=false}
+}
+function unlockSpeech(){try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}}   // iPhoneは最初の読み上げをタップ操作の中で行う必要がある
+const ORB_SAY='この先、スピードに注意してください';
 function orbAlert(){
+  if(cfg.orbVoice)setTimeout(()=>speakJa(ORB_SAY),1100);   // チャイムのあとに読み上げ
   if(!ac)return;
   [[0,988],[.28,784],[.56,988],[.84,784]].forEach(([d,f])=>{
     const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();
@@ -931,7 +953,8 @@ function voiceSet(X,n,v){   // n=半音の段数（上限なし）、v=強さ 0�
     X.n=v>0?n:null;
   }
 }
-let tone=null;
+let tone=null,speaking=false;
+const STOP_KMH=2;   // これ未満の車速は停車中とみなしてG警告音を止める
 function ensureTone(){
   if(!ac)return;
   if(tone&&tone.key===cfg.tim)return;
@@ -941,7 +964,9 @@ function ensureTone(){
 function setVol(m){
   if(!ac)return;
   if(!tone||tone.key!==cfg.tim)ensureTone();
-  const v=cfg.snd?Math.min(1,Math.max(0,(m-cfg.thr)/1)):0;
+  const stopped=gps.sp!=null&&gps.sp<STOP_KMH;
+  let v=cfg.snd&&!stopped?Math.min(1,Math.max(0,(m-cfg.thr)/1)):0;
+  if(speaking)v*=.25;   // 音声の読み上げ中はG警告音を小さく
   const n=cfg.pitch?Math.min(400,Math.max(0,Math.floor((m-cfg.thr)/.05+1e-6))):0;
   voiceSet(tone,n,v);
 }
@@ -1234,7 +1259,7 @@ function vframe(dt){
 //    残った「運転操作の帯域」のGの変化率だけを評価する
 // 2) 軌跡の丸み: トゲ（Gが出てすぐ戻る、向きの急な反転）と、
 //    ＋型（前後Gと左右Gの切り替えで、いったん中心まで戻る）を減点する
-function newScorer(){return{lx:0,ly:0,lx2:0,ly2:0,px:null,py:null,jx:0,jy:0,prx:null,pry:null,noiseSq:0,noiseT:0,t:0,act:0,pen:0,jmax:0,hist:[],lastS:-1,corners:0,cornerW:0,lastCorner:-9,dom:null,domT:-9,minG:9,trans:0,conn:0,bucketP:0,ev:[]}}
+function newScorer(){return{lx:0,ly:0,lx2:0,ly2:0,px:null,py:null,jx:0,jy:0,prx:null,pry:null,noiseSq:0,noiseT:0,t:0,act:0,pen:0,penX:0,penY:0,jmax:0,hist:[],lastS:-1,corners:0,cornerW:0,lastCorner:-9,dom:null,domT:-9,minG:9,trans:0,conn:0,bucketP:0,ev:[]}}
 function takeP(S){const v=S.bucketP;S.bucketP=0;return v}
 function feedScore(S,x,y,dt){
   if(!(dt>0))return;
@@ -1247,7 +1272,8 @@ function feedScore(S,x,y,dt){
   S.px=S.lx2;S.py=S.ly2;S.t+=dt;
   const g=Math.hypot(S.lx2,S.ly2),j=Math.hypot(S.jx,S.jy);
   if(g>0.1){                                                     // 加減速・旋回している時間だけで評価
-    const pv=Math.min(1,Math.max(0,(j-0.25)/0.95));S.act+=dt;S.pen+=pv*dt;if(pv>S.bucketP)S.bucketP=pv;if(j>S.jmax)S.jmax=j;
+    const pv=Math.min(1,Math.max(0,(j-0.25)/0.95));S.act+=dt;S.pen+=pv*dt;
+    const cl=q=>Math.min(1,Math.max(0,(Math.abs(q)-0.25)/0.95));S.penX+=cl(S.jx)*dt;S.penY+=cl(S.jy)*dt;   // 横（左右）と縦（前後）を別々にif(pv>S.bucketP)S.bucketP=pv;if(j>S.jmax)S.jmax=j;
   }
   if(S.t-S.lastS>=0.05){
     S.lastS=S.t;S.hist.push({t:S.t,jx:S.jx,jy:S.jy,j,g});
@@ -1278,7 +1304,8 @@ function scoreResult(S){
   const spike=c(100*Math.exp(-0.7*S.cornerW/Math.max(S.act/60,0.5)));
   const plus=S.trans?c(100*S.conn/S.trans):null;
   const round=plus==null?spike:Math.round((spike+plus)/2);
-  return{total:Math.round((jerk+round)/2),jerk,round,spike,plus,trans:S.trans,conn:S.conn,corners:S.corners,
+  const lat=c(100-150*(S.penX||0)/S.act),lon=c(100-150*(S.penY||0)/S.act);
+  return{total:Math.round((jerk+round)/2),jerk,round,spike,plus,lat,lon,trans:S.trans,conn:S.conn,corners:S.corners,
     jmax:+S.jmax.toFixed(2),noise:+Math.sqrt(S.noiseSq/Math.max(S.noiseT,1e-6)).toFixed(2),act:Math.round(S.act)};
 }
 function scoreSeries(rows){
@@ -1291,12 +1318,28 @@ function scoreSeries(rows){
   return{res:scoreResult(S),pen:{pj,ev}};
 }
 function scoreRows(rows){return scoreSeries(rows).res}
+// 上達のアドバイス: 点数の低い項目から順に
+function adviceList(sc){
+  if(!sc)return[];
+  const it=[];
+  if(sc.lat!=null&&sc.lat<85)it.push([sc.lat,'ステアリング操作を滑らかにしましょう。切り始めと戻しをゆっくり、一定の速さで回すと、横方向のGの変化が穏やかになります。']);
+  if(sc.lon!=null&&sc.lon<85)it.push([sc.lon,'アクセルとブレーキの操作を滑らかにしましょう。踏み始めと戻す瞬間をゆっくりにすると、縦方向のGの変化が穏やかになります。']);
+  if(sc.spike<80)it.push([sc.spike,'Gが出てすぐ戻る動き（トゲ）が多めです。ブレーキやハンドルを一気に戻さず、じわっと抜くようにしましょう。']);
+  if(sc.plus!=null&&sc.plus<70)it.push([sc.plus,'ブレーキからハンドル操作に移るとき、Gがいったん0に戻っています。ブレーキを少しずつ緩めながらハンドルを切り始めると、つながりが滑らかになります。']);
+  return it.sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+}
+function adviceHtml(sc){
+  const l=adviceList(sc);
+  return '<div class="adv"><b>上達のアドバイス</b>'+(l.length?'<ul>'+l.map(t=>'<li>'+t+'</li>').join('')+'</ul>':'<p>とても滑らかな運転です。この調子を続けましょう。</p>')+'</div>';
+}
 function scoreHtml(sc){
   if(!sc)return '<p class="mcap">加減速や旋回が少ないため、採点できませんでした（合計5秒以上必要です）。</p>';
   const row=(l,v,sub)=>'<div class="sr"><span>'+l+'</span><b>'+v+'</b><small>'+sub+'</small></div>';
   return '<div class="sc"><div class="st"><b>'+sc.total+'</b><span>点</span></div>'
     +row('ジャーク（運転操作）',sc.jerk,'Gの変化のなめらかさ　最大 '+sc.jmax+' G/s')
+    +(sc.lat!=null?row('　横（ハンドル）',sc.lat,'左右Gの変化のなめらかさ')+row('　縦（アクセル・ブレーキ）',sc.lon,'前後Gの変化のなめらかさ'):'')
     +row('軌跡の丸み',sc.round,'トゲ '+sc.corners+'回'+(sc.trans?'　前後↔左右の切り替え：なめらか '+sc.conn+' / '+sc.trans+' 回':''))
+    +adviceHtml(sc)
     +'<p class="mcap">路面や振動などの速い揺れ（約2Hzより速いもの）はノイズとして採点から除外しています（ノイズ量 '+sc.noise+' G/s）。評価した運転操作の時間：'+sc.act+'秒</p></div>';
 }
 // main loop
@@ -1339,6 +1382,7 @@ function loop(now){
     if(now-sclT>500){
       sclT=now;const el=$('scl');el.hidden=!rec;
       if(rec){const r=scoreResult(scorer);el.textContent=r?'採点中　ジャーク '+r.jerk+'　丸み '+r.round+'　（暫定 '+r.total+'点）':'採点中（加減速や旋回が少ないため集計中）'}
+      const ad=$('adv'),ar=rec?scoreResult(scorer):null;ad.hidden=!ar;if(ar){const l=adviceList(ar);ad.textContent='アドバイス：'+(l[0]||'滑らかに運転できています。この調子です。')}
     }
     drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
   }
