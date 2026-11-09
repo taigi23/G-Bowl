@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.20.0 (2026-11-09) 左右・前後・上下の数値の右に、それぞれの＋側と−側の最大Gを表示（「最大値を消す」でリセット）
   1.19.0 (2026-11-09) 3軸対応: 0点合わせで重力の向きを覚え、寝かせ置き・立て置き・斜め置き・横向きのどれでも左右／前後／上下のGに分ける。
                      置き方を自動で判定（前回の0点を保存。止まっていて置き方が変わっていたら合わせ直す）。上下Gと標高（GPS）を表示・記録・グラフ化・CSVに追加
   1.18.1 (2026-11-09) 修正: ブラウザを閉じて開き直すと音が出なくなることがある。戻ったときに音を再開し、だめなら画面のタップで再開（案内も表示）
@@ -88,6 +89,11 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .row div{background:var(--panel);border-radius:10px;padding:7px 8px}
 .row small{display:block;color:var(--mut);font-size:.68rem}
 .row strong{font-size:1rem}
+.row3{grid-template-columns:repeat(3,1fr);margin-bottom:6px}
+.row .ax{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.row .ax>div{background:none;padding:0;border-radius:0}
+.row .mm{display:flex;flex-direction:column;align-items:flex-end;font-size:.72rem;line-height:1.3;color:var(--mut)}
+.row .mm span:first-child{color:var(--fg)}
 .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 button,select{font:inherit;font-size:.85rem;padding:9px 12px;border-radius:10px;border:1px solid var(--ring);background:var(--panel);color:var(--fg)}
 button.p,.tab.on{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
@@ -142,10 +148,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <section id="pm">
 <div class="bw"><canvas id="c" aria-label="Gボール"></canvas><div class="corner"><button id="cal">0点合わせ</button><button id="rst">最大値を消す</button></div></div>
 <div class="big"><b id="mag">0.00</b><span>G</span></div>
+<div class="row row3">
+<div class="ax"><div><small>左右</small><strong id="gx">0.00</strong></div><div class="mm" aria-label="左右の最大"><span id="gxp">+0.00</span><span id="gxn">-0.00</span></div></div>
+<div class="ax"><div><small>前後</small><strong id="gy">0.00</strong></div><div class="mm" aria-label="前後の最大"><span id="gyp">+0.00</span><span id="gyn">-0.00</span></div></div>
+<div class="ax"><div><small>上下</small><strong id="gz">0.00</strong></div><div class="mm" aria-label="上下の最大"><span id="gzp">+0.00</span><span id="gzn">-0.00</span></div></div>
+</div>
 <div class="row">
-<div><small>左右</small><strong id="gx">0.00</strong></div>
-<div><small>前後</small><strong id="gy">0.00</strong></div>
-<div><small>上下</small><strong id="gz">0.00</strong></div>
 <div><small>最大G</small><strong id="pk">0.00</strong></div>
 <div><small>km/h</small><strong id="sp">--</strong></div>
 <div><small>制限</small><strong id="lim">--</strong></div>
@@ -228,7 +236,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.19.0',APP_DATE='2026-11-09';
+const APP_VERSION='1.20.0',APP_DATE='2026-11-09';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -240,7 +248,7 @@ let cfg={fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
-let raw={x:0,y:0,z:0},gf=null,basis=null,calN=0,sg={x:0,y:0,z:0},peak=0,trail=[],sensor=false,S=.4;
+let axMax={xp:0,xn:0,yp:0,yn:0,zp:0,zn:0},raw={x:0,y:0,z:0},gf=null,basis=null,calN=0,sg={x:0,y:0,z:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
 let gps={sp:null,lat:null,lon:null,alt:null},wid=null,ac=null,V=null,saved=[];
 let scorer=null,sclT=0,liveS=null,liveEvN=0,logPen=[],logEv=[],recEvN=0;
@@ -399,7 +407,7 @@ $('start').onclick=async()=>{
   if(await start()){startGps();liveS=newScorer();liveEvN=0}else setRun(false);
 };
 $('cal').onclick=()=>{if(!sensor){msg('先に「開始」を押してください。');return}calibrate()};
-$('rst').onclick=()=>{peak=0;trail=[];env.fill(0)};
+$('rst').onclick=()=>{peak=0;trail=[];env.fill(0);for(const k in axMax)axMax[k]=0};
 $('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
 $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if(p)LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))};
 $('mall').onclick=()=>{if(LM)fitAll(LM,trk)};
@@ -1440,6 +1448,8 @@ function loop(now){
   sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;sg.z+=(tz-sg.z)*al;
   const m=Math.hypot(sg.x,sg.y);
   if(m>peak)peak=m;
+  {const A=axMax,vx=sg.x,vy=-sg.y,vz=sg.z;   // 軸ごとの＋側・−側の最大（表示と同じ向き）
+   if(vx>A.xp)A.xp=vx;if(vx<A.xn)A.xn=vx;if(vy>A.yp)A.yp=vy;if(vy<A.yn)A.yn=vy;if(vz>A.zp)A.zp=vz;if(vz<A.zn)A.zn=vz}
   curM=Math.max(curM,m);
   S=nice(peak);
   if(m>.02)envAdd(env,sg.x,sg.y,m);
@@ -1459,9 +1469,12 @@ function loop(now){
   }
   if(!$('pm').hidden){
     $('mag').textContent=m.toFixed(2);
-    $('gx').textContent=sg.x.toFixed(2);
-    $('gy').textContent=(-sg.y).toFixed(2);
-    $('gz').textContent=sg.z.toFixed(2);
+    const z2=v=>(Math.abs(v)<.005?0:v).toFixed(2);   // -0.00 を 0.00 にする
+    $('gx').textContent=z2(sg.x);
+    $('gy').textContent=z2(-sg.y);
+    $('gz').textContent=z2(sg.z);
+    {const A=axMax,f=(v,sg)=>(sg>0?'+':'-')+Math.abs(v).toFixed(2);
+     $('gxp').textContent=f(A.xp,1);$('gxn').textContent=f(A.xn,-1);$('gyp').textContent=f(A.yp,1);$('gyn').textContent=f(A.yn,-1);$('gzp').textContent=f(A.zp,1);$('gzn').textContent=f(A.zn,-1)}
     $('alt').textContent=gps.alt==null?'--':Math.round(gps.alt);
     $('pk').textContent=peak.toFixed(2);
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
