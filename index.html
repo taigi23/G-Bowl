@@ -4,6 +4,10 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.24.0 (2026-11-10) セクションタイム: コースにセクションの線（最大9本）を地図で追加。ライブで通過時にセクションタイムとベストとの差、理論ベスト。
+                     ログのラップ一覧にセクションタイム（各ベストは紫）と理論ベスト、比較グラフにセクションの境目
+  1.23.0 (2026-11-10) ラップタブに地図（現在地・今回の走行・スタート／ゴール）を追加。ラップの地図・コース設定の地図に「現在地」、
+                     ログ再生の地図に「再生位置」ボタン。ログタブの「現在地」はGPSの最新位置に戻るように
   1.22.0 (2026-11-09) スタート・ゴールを地図で手動設定できるように（タップで線を置く・向きは走行記録から自動／スライダー・反転）。
                      コースの種類に「区間（スタートとゴールが別）」を追加。地図に進む向きの矢印を表示
   1.21.0 (2026-11-09) ラップ計測を追加（「ラップ」タブ）。スタート／ゴールラインを走りながら登録し、GPSの通過を補間してラップタイムを計測。
@@ -117,8 +121,12 @@ button.on{border-color:var(--peak);color:var(--peak)}
 .laps li.best b,.laps li.best small{color:#16a34a}
 .laps li.sel{outline:2px solid var(--ball)}
 .laps li[data-n]{cursor:pointer}
+.laps li .secs{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.78rem;color:var(--mut)}
+.laps li .secs .sb{color:#8b5cf6;font-weight:700}
+.lapbig .lps{font-size:1rem;min-height:1.3em}
 .laps li.none{display:block;color:var(--mut);font-size:.85rem}
 .lapm{margin:6px 0 0;padding:8px 10px;border-radius:10px;background:var(--panel);font-variant-numeric:tabular-nums;font-size:.9rem}
+#lmap{height:280px;border-radius:10px;margin-top:8px;background:var(--panel)}
 #tmap{height:320px;border-radius:10px;margin-top:8px;background:var(--panel)}
 #tedw h3{font-size:1rem;margin:14px 0 4px}
 #lapc{display:block;width:100%;height:326px;border-radius:10px;margin-top:8px;background:var(--panel);touch-action:pan-y}
@@ -193,10 +201,14 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="cap" aria-label="ログの空き容量"><div class="caph"><span>ログの空き容量</span><b id="capt">確認中…</b></div><div class="capbar"><i id="capf"></i></div><small id="capd"></small></div>
 </section>
 <section id="pt" hidden>
-<div class="lapbig"><small id="lpn">コースがありません</small><b id="lpt">--:--.--</b><span id="lpd"></span></div>
+<div class="lapbig"><small id="lpn">コースがありません</small><b id="lpt">--:--.--</b><span id="lpd"></span><span id="lps" class="lps"></span></div>
 <div class="row"><div><small>前回</small><strong id="lpl">--</strong></div><div><small>ベスト</small><strong id="lpb">--</strong></div><div><small>周回</small><strong id="lpc">0</strong></div><div><small>km/h</small><strong id="lpsp">--</strong></div></div>
+<p class="mcap" id="lptb"></p>
 <ol id="lpls" class="laps"></ol>
 <div class="btns"><button id="lprs">ラップを消す</button></div>
+<div id="lmap" aria-label="ラップの地図"></div>
+<p class="mcap">青の丸＝現在地　線＝今回の走行　黒と白の線＝スタート／ゴール（緑と白＝区間のスタート）　ピンチで拡大・縮小</p>
+<div class="btns"><button id="lmfol">現在地</button><button id="lmall">コース全体</button></div>
 <h2>コース（スタート／ゴールライン）</h2>
 <p class="mcap" id="lpst"></p>
 <div class="set"><span>使うコース</span><select id="trsel" aria-label="使うコース"></select></div>
@@ -205,11 +217,11 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div id="tedw" hidden>
 <h3 id="tedh">コースを作る</h3>
 <div class="set"><span>種類</span><select id="ttype" aria-label="コースの種類"><option value="loop">周回（スタート＝ゴール）</option><option value="sprint">区間（スタートとゴールが別）</option></select></div>
-<div class="set" id="twhw"><span>置く線</span><select id="twh" aria-label="置く線"><option value="s">スタート</option><option value="f">ゴール</option></select></div>
+<div class="set" id="twhw"><span>置く線</span><span><select id="twh" aria-label="置く線"></select> <button id="tsdel" hidden>この線を消す</button></span></div>
 <div id="tmap" aria-label="コース設定の地図"></div>
-<p class="mcap" id="tedst">地図をタップすると、その場所に線を置きます。灰色の線はこれまでの走行記録です。向き（矢印）は近くの走行記録から自動で合わせます。違っていたら「向きを反転」かスライダーで直してください。</p>
+<p class="mcap" id="tedst">地図をタップすると、「置く線」で選んだ線をその場所に置きます。セクションの線は、走る順に追加してください。灰色の線はこれまでの走行記録です。向き（矢印）は近くの走行記録から自動で合わせます。違っていたら「向きを反転」かスライダーで直してください。</p>
 <div class="set"><span>向き <b><span id="thv">0</span>°</b></span><input type="range" id="th" min="0" max="355" step="5" aria-label="線の向き"></div>
-<div class="btns"><button id="tflip">向きを反転</button><button id="tcancel">やめる</button><button class="p" id="tsave">保存</button></div>
+<div class="btns"><button id="tfol">現在地</button><button id="tflip">向きを反転</button><button id="tcancel">やめる</button><button class="p" id="tsave">保存</button></div>
 </div>
 <div class="set"><span>ラインの幅 <b><span id="trwv">30</span> m</b></span><input type="range" id="trw" min="10" max="80" step="5" aria-label="ラインの幅"></div>
 <div class="set"><span>ラップタイムを読み上げる</span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
@@ -241,7 +253,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button id="vgall" hidden>グラフを全体表示</button></div>
 <div id="vmw"><div id="vm" aria-label="ログの走行マップ"></div>
 <p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
-<div class="btns"><button id="vall">全体表示</button></div></div>
+<div class="btns"><button id="vfol">再生位置</button><button id="vall">全体表示</button></div></div>
 <p class="mcap" id="vnogps" hidden>このログにはGPSの位置がないので、地図は出ません。記録するときは「開始」を押してGPSも動かしてください。</p>
 <div id="vlap" hidden>
 <h2>ラップ</h2>
@@ -292,7 +304,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.22.0',APP_DATE='2026-11-09';
+const APP_VERSION='1.24.0',APP_DATE='2026-11-09';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -320,7 +332,7 @@ let LM=null,VM=null;
 addEventListener('resize',size);size();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
-  $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';$('pt').hidden=b.dataset.t!=='t';if(b.dataset.t==='t')renderTrackUi();
+  $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';$('pt').hidden=b.dataset.t!=='t';if(b.dataset.t==='t'){renderTrackUi();lapMap()}
   if(b.dataset.t==='l')liveMap();else if(logsReady)showCap();
   size();
 });
@@ -465,7 +477,7 @@ $('start').onclick=async()=>{
 $('cal').onclick=()=>{if(!sensor){msg('先に「開始」を押してください。');return}calibrate()};
 $('rst').onclick=()=>{peak=0;trail=[];env.fill(0);for(const k in axMax)axMax[k]=0};
 $('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
-$('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=trk[trk.length-1];if(p)LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))};
+$('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){LM.cur.setLatLng([p.la,p.lo]).addTo(LM.map);LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
 $('mall').onclick=()=>{if(LM)fitAll(LM,trk)};
 // recording and saved logs
 // 保存先: IndexedDB（ブラウザ内のデータベース。数百MB使える）。使えない環境では localStorage（約5MB）に保存
@@ -879,8 +891,12 @@ function interpT(P,d){
   let lo=0,hi=P.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(P[m].d<=d)lo=m;else hi=m}
   const a=P[lo],b=P[hi];return b.d>a.d?a.t+(b.t-a.t)*(d-a.d)/(b.d-a.d):a.t;
 }
-let LP={T:null,prev:null,start:null,dist:0,cur:[],laps:[],best:null,bestPts:null,delta:null};
-function lapReset(){LP={T:LP.T,prev:null,start:null,dist:0,cur:[],laps:[],best:null,bestPts:null,delta:null};renderLapList();drawSF()}
+const secLine=(T,k)=>({la:T.sec[k].la,lo:T.sec[k].lo,h:T.sec[k].h,w:T.w});
+// 区切り時刻（スタートからの時間）の並びから、各セクションのタイムを出す。通過できなかったセクションは null
+function secTimes(sp,time,n){const o=[];let pv=0;for(let k=0;k<=n;k++){const e=k<n?sp[k]:time;o.push(e==null||pv==null?null:e-pv);pv=e==null?null:e}return o}
+const theoBest=bs=>bs.length&&bs.every(v=>v!=null)?bs.reduce((a,b)=>a+b,0):null;   // 理論ベスト
+let LP={T:null,prev:null,start:null,dist:0,cur:[],laps:[],best:null,bestPts:null,delta:null,splits:[],si:0,bestSec:[],secMsg:null};
+function lapReset(){LP={T:LP.T,prev:null,start:null,dist:0,cur:[],laps:[],best:null,bestPts:null,delta:null,splits:[],si:0,bestSec:[],secMsg:null};renderLapList();drawSF()}
 function activeTrack(la,lo){
   if(cfg.trackId){const T=tracks.find(t=>t.id===cfg.trackId);if(T)return T}
   if(la==null)return null;
@@ -891,17 +907,22 @@ function lapFix(la,lo,ts){
   if(T!==LP.T){LP.T=T;lapReset();renderTrackUi()}
   if(!T)return;
   let t=performance.now()/1000;if(ts){const age=Date.now()-ts;if(age>=0&&age<5000)t-=age/1000}   // 位置を測った時刻
-  const q={la,lo,t},sprint=T.type==='sprint'&&T.f;
+  const q={la,lo,t},sprint=T.type==='sprint'&&T.f,NS=(T.sec||[]).length;
   if(LP.prev){
     const sd=dist(LP.prev.la,LP.prev.lo,la,lo),at=f=>LP.prev.t+(t-LP.prev.t)*f;
+    if(LP.start!=null&&LP.si<NS){   // 次のセクションの線だけを見る（順番どおりに通過したものだけ数える）
+      const fk=crossLine(secLine(T,LP.si),LP.prev,q);
+      if(fk!=null){const k=LP.si,sp=at(fk)-LP.start;LP.splits[k]=sp;LP.si++;secDone(k)}
+    }
     const fs=crossLine(sLine(T),LP.prev,q),ff=sprint?crossLine(fLine(T),LP.prev,q):fs;
     const finish=f=>{   // ゴールの線を通過：1周（区間）を記録
       const tc=at(f),time=tc-LP.start;LP.cur.push({d:LP.dist+sd*f,t:time});
-      const lap={n:LP.laps.length+1,time},isBest=LP.best==null||time<LP.best,prevBest=LP.best;
+      const lap={n:LP.laps.length+1,time,secs:NS?secTimes(LP.splits,time,NS):null},isBest=LP.best==null||time<LP.best,prevBest=LP.best;
+      if(lap.secs)lap.secs.forEach((v,k)=>{if(v!=null&&(LP.bestSec[k]==null||v<LP.bestSec[k]))LP.bestSec[k]=v});
       LP.laps.push(lap);if(isBest){LP.best=time;LP.bestPts=LP.cur}
       lapDone(lap,isBest,prevBest);
     };
-    const begin=f=>{const tc=at(f);LP.start=tc;LP.dist=sd*(1-f);LP.cur=[{d:0,t:0},{d:LP.dist,t:t-tc}];LP.delta=null};
+    const begin=f=>{const tc=at(f);LP.start=tc;LP.dist=sd*(1-f);LP.cur=[{d:0,t:0},{d:LP.dist,t:t-tc}];LP.delta=null;LP.splits=[];LP.si=0};
     if(!sprint){
       if(fs!=null&&(LP.start==null||at(fs)-LP.start>10)){if(LP.start!=null)finish(fs);begin(fs)}
       else if(LP.start!=null){LP.dist+=sd;LP.cur.push({d:LP.dist,t:t-LP.start})}
@@ -914,15 +935,27 @@ function lapFix(la,lo,ts){
   }
   LP.prev=q;
 }
+function secDone(k){   // セクションの線を通過：短いチャイムと、そのセクションのタイム・ベストとの差
+  const sp=LP.splits,v=sp[k]-(k?sp[k-1]:0),b=LP.bestSec[k];
+  LP.secMsg={k,v:isFinite(v)?v:null,d:b!=null&&isFinite(v)?v-b:null,until:performance.now()+8000};
+  if(ac){const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=1175;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.09);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.1)}
+}
 function lapDone(lap,isBest,prevBest){
+  if(lap.secs){const k=lap.secs.length-1,v=lap.secs[k],b=LP.bestSec[k];LP.secMsg={k,v,d:v!=null&&b!=null?v-b:null,until:performance.now()+8000}}
   if(ac)[[0,1319],[.13,1760]].forEach(([d,f])=>{const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.35,t+.01);g.gain.linearRampToValueAtTime(0,t+.12);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.14)});
   if(cfg.lapVoice!==false)setTimeout(()=>speakJa('ラップ'+lap.n+'、'+sayLap(lap.time)+(isBest&&prevBest!=null?'、ベスト':'')),350);
   msg('ラップ '+lap.n+'：'+fmtLap(lap.time)+(isBest?(prevBest!=null?'（ベスト更新）':''):'（ベスト '+fmtLap(LP.best)+'）'));
   renderLapList();
 }
+function secRow(secs,best){   // セクションタイムの行。各セクションのベストは紫
+  if(!secs)return'';
+  return'<div class="secs">'+secs.map((v,k)=>'<span'+(v!=null&&best[k]!=null&&Math.abs(v-best[k])<1e-6?' class="sb"':'')+'>S'+(k+1)+' '+(v==null?'--':fmtSec(v))+'</span>').join('')+'</div>';
+}
+const fmtSec=v=>v>=60?fmtLap(v):v.toFixed(2);
 function renderLapList(){
   const el=$('lpls');if(!el)return;
-  el.innerHTML=LP.laps.slice().reverse().map(l=>'<li'+(l.time===LP.best?' class="best"':'')+'><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===LP.best?'ベスト':fmtDelta(l.time-LP.best))+'</small></li>').join('');
+  el.innerHTML=LP.laps.slice().reverse().map(l=>'<li'+(l.time===LP.best?' class="best"':'')+'><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===LP.best?'ベスト':fmtDelta(l.time-LP.best))+'</small>'+secRow(l.secs,LP.bestSec)+'</li>').join('');
+  const tb=theoBest(LP.bestSec);$('lptb').textContent=tb!=null&&LP.laps.length>1?'理論ベスト（各セクションのベストの合計） '+fmtLap(tb):'';
   $('lpl').textContent=LP.laps.length?fmtLap(LP.laps[LP.laps.length-1].time):'--';
   $('lpb').textContent=LP.best==null?'--':fmtLap(LP.best);
   $('lpc').textContent=LP.laps.length;
@@ -934,20 +967,23 @@ function lapTick(){   // 画面の更新（毎フレーム）
     $('lpn').textContent=T?(LP.start==null?'スタート／ゴールの通過待ち':'ラップ '+(LP.laps.length+1)):'コースがありません';
     $('lpt').textContent=el==null?'--:--.--':fmtLap(el);
     const d=$('lpd');d.textContent=LP.delta==null?'':'ベストとの差 '+fmtDelta(LP.delta);d.style.color=dc;
+    const S=LP.secMsg&&performance.now()<LP.secMsg.until?LP.secMsg:null,NS=T&&T.sec?T.sec.length:0,ls=$('lps');
+    ls.innerHTML=S?'S'+(S.k+1)+'　'+(S.v==null?'--':fmtSec(S.v))+(S.d==null?'':'　<b style="color:'+(S.d>0?'#dc2626':S.d<0?'#16a34a':'#8b5cf6')+'">'+fmtDelta(S.d)+'</b>'):NS&&LP.start!=null?'セクション '+Math.min(LP.si+1,NS+1)+' / '+(NS+1):'';
     $('lpsp').textContent=gps.sp==null?'--':Math.round(gps.sp);
   }
   const m=$('lapm');m.hidden=!on;
-  if(on)m.innerHTML=LP.start==null?'⏱ '+T.name+'：スタート／ゴールの通過待ち':'⏱ ラップ '+(LP.laps.length+1)+'　<b>'+fmtLap(el)+'</b>'+(LP.delta==null?'':'　<b style="color:'+dc+'">'+fmtDelta(LP.delta)+'</b>')+(LP.best==null?'':'　ベスト '+fmtLap(LP.best));
+  if(on)m.innerHTML=LP.start==null?'⏱ '+T.name+'：スタート／ゴールの通過待ち':'⏱ ラップ '+(LP.laps.length+1)+'　<b>'+fmtLap(el)+'</b>'+(LP.delta==null?'':'　<b style="color:'+dc+'">'+fmtDelta(LP.delta)+'</b>')+(LP.best==null?'':'　ベスト '+fmtLap(LP.best))+(LP.secMsg&&performance.now()<LP.secMsg.until&&LP.secMsg.d!=null?'　S'+(LP.secMsg.k+1)+' <b style="color:'+(LP.secMsg.d>0?'#dc2626':'#16a34a')+'">'+fmtDelta(LP.secMsg.d)+'</b>':'');
 }
 function drawLines(G,T){   // スタート＝緑と白、ゴール（周回はスタート／ゴール）＝黒と白のチェッカー。矢印は進む向き
   const one=(ln,col)=>{const e=lineEnds(ln);L.polyline(e,{pane:'mrk',color:col,weight:7,opacity:.95}).addTo(G);L.polyline(e,{pane:'mrk',color:'#fff',weight:3,dashArray:'4 4'}).addTo(G);
     const h=ln.h*Math.PI/180,c=Math.cos(ln.la*Math.PI/180),tip=[ln.la+Math.cos(h)*22/110540,ln.lo+Math.sin(h)*22/(111320*c)];L.polyline([[ln.la,ln.lo],tip],{pane:'mrk',color:col,weight:3}).addTo(G);L.circleMarker(tip,{pane:'mrk',radius:4,color:col,fillColor:col,fillOpacity:1,weight:1}).addTo(G)};
+  (T.sec||[]).forEach((x,k)=>one(secLine(T,k),'#8b5cf6'));   // セクションの線＝紫
   if(T.type==='sprint'&&T.f){one(sLine(T),'#16a34a');one(fLine(T),'#111')}else one(T,'#111');
 }
 function drawSF(){   // 地図にスタート／ゴールラインを描く
-  [LM,VM].forEach(M=>{if(!M)return;if(!M.sf)M.sf=L.layerGroup().addTo(M.map);M.sf.clearLayers()});
+  [LM,VM,LMM].forEach(M=>{if(!M)return;if(!M.sf)M.sf=L.layerGroup().addTo(M.map);M.sf.clearLayers()});
   const put=(M,T)=>{if(M&&T)drawLines(M.sf,T)};
-  put(LM,LP.T||activeTrack(gps.lat,gps.lon));if(V&&V.lapT)put(VM,V.lapT);
+  const AT=LP.T||activeTrack(gps.lat,gps.lon)||(cfg.trackId&&tracks.find(t=>t.id===cfg.trackId));put(LM,AT);put(LMM,AT);if(V&&V.lapT)put(VM,V.lapT);
 }
 function renderTrackUi(){
   const s=$('trsel');if(!s)return;
@@ -988,19 +1024,27 @@ function edHeading(la,lo){   // 近く（30m以内）を通った記録の進む
   ED.tr.forEach(a=>{for(let i=1;i<a.length;i++){const p=a[i-1],q=a[i],sl=dist(p[0],p[1],q[0],q[1]);if(sl<1||sl>200)continue;const A=llXY(p[0],p[1],{la,lo}),B=llXY(q[0],q[1],{la,lo}),dx=B[0]-A[0],dy=B[1]-A[1],u=Math.max(0,Math.min(1,-(A[0]*dx+A[1]*dy)/(dx*dx+dy*dy))),d=Math.hypot(A[0]+dx*u,A[1]+dy*u);if(d<bd){bd=d;best=brg(p[0],p[1],q[0],q[1])}}});
   return best;
 }
-function edLine(){return ED.wh==='f'?ED.T.f:ED.T}
+function edLine(){return ED.wh==='f'?ED.T.f:ED.wh.startsWith('k')?ED.T.sec[+ED.wh.slice(1)]:ED.wh==='new'?null:ED.T}
+function edOpts(){   // 置く線の選択肢: スタート（／ゴール）・ゴール・セクションの線（通る順）・セクションの線を追加
+  const T=ED.T,sp=T.type==='sprint',o=['<option value="s">'+(sp?'スタート':'スタート／ゴール')+'</option>'];
+  if(sp)o.push('<option value="f">ゴール</option>');
+  (T.sec||[]).forEach((x,k)=>o.push('<option value="k'+k+'">セクションの線 '+(k+1)+'（S'+(k+1)+'とS'+(k+2)+'の境目）</option>'));
+  if((T.sec||[]).length<9)o.push('<option value="new">＋ セクションの線を追加</option>');
+  if(ED.wh==='f'&&!sp)ED.wh='s';if(ED.wh.startsWith('k')&&!(T.sec||[])[+ED.wh.slice(1)])ED.wh='s';
+  $('twh').innerHTML=o.join('');$('twh').value=ED.wh;$('tsdel').hidden=!ED.wh.startsWith('k');
+}
 function edDraw(){
   if(!TM)return;if(!TM.ed)TM.ed=L.layerGroup().addTo(TM.map);TM.ed.clearLayers();
   const T=ED.T;if(T.la!=null)drawLines(TM.ed,T.type==='sprint'&&!T.f?{...T,type:'loop'}:T);
-  if(T.type==='sprint'&&T.f==null&&T.la!=null)$('tedst').textContent='スタートを置きました。次に「置く線」をゴールにして、ゴールの場所をタップしてください。';
+  if(T.type==='sprint'&&T.f==null&&T.la!=null&&ED.wh==='s')$('tedst').textContent='スタートを置きました。次に「置く線」をゴールにして、ゴールの場所をタップしてください。';
   const ln=edLine();$('th').value=ln&&ln.h!=null?Math.round(ln.h/5)*5%360:0;$('thv').textContent=ln&&ln.h!=null?Math.round(ln.h):'--';
-  $('twhw').hidden=T.type!=='sprint';
+  edOpts();
 }
 function openEditor(T){
-  ED={T:T?JSON.parse(JSON.stringify(T)):{id:null,name:'',type:'loop',la:null,lo:null,h:0,w:30,f:null},wh:'s',isNew:!T,tr:[]};
-  if(!ED.T.type)ED.T.type='loop';
+  ED={T:T?JSON.parse(JSON.stringify(T)):{id:null,name:'',type:'loop',la:null,lo:null,h:0,w:30,f:null,sec:[]},wh:'s',isNew:!T,tr:[]};
+  if(!ED.T.type)ED.T.type='loop';if(!ED.T.sec)ED.T.sec=[];
   $('tedw').hidden=false;$('tedh').textContent=T?'「'+T.name+'」を編集':'コースを作る';
-  $('tedst').textContent='地図をタップすると、その場所に線を置きます。灰色の線はこれまでの走行記録です。向き（矢印）は近くの走行記録から自動で合わせます。違っていたら「向きを反転」かスライダーで直してください。';$('ttype').value=ED.T.type;$('twh').value='s';
+  $('tedst').textContent='地図をタップすると、その場所に線を置きます。灰色の線はこれまでの走行記録です。向き（矢印）は近くの走行記録から自動で合わせます。違っていたら「向きを反転」かスライダーで直してください。';$('ttype').value=ED.T.type;
   if(!TM){TM=makeMap($('tmap'));if(TM)TM.map.on('click',e=>edTap(e.latlng.lat,e.latlng.lng))}
   if(!TM)return;
   setTimeout(()=>TM.map.invalidateSize(),50);
@@ -1008,16 +1052,21 @@ function openEditor(T){
   ED.tr=edTraces(c&&c[0],c&&c[1]);
   if(!TM.trc)TM.trc=L.layerGroup().addTo(TM.map);TM.trc.clearLayers();
   ED.tr.forEach(a=>L.polyline(a,{pane:'trk',color:'#9ca3af',weight:4,opacity:.8}).addTo(TM.trc));
+  if(gps.lat!=null)TM.cur.setLatLng([gps.lat,gps.lon]).addTo(TM.map);else TM.cur.remove();
   if(c)TM.map.setView(c,17);else if(ED.tr.length)TM.map.fitBounds(L.latLngBounds(ED.tr.flat()),{maxZoom:17});
   edDraw();$('tedw').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function edTap(la,lo){
   if(!ED)return;const T=ED.T,h=edHeading(la,lo);
-  if(ED.wh==='f'){const old=T.f;T.f={la,lo,h:h!=null?h:(old?old.h:T.h||0)}}else{T.la=la;T.lo=lo;if(h!=null)T.h=h}
+  if(ED.wh==='f'){const old=T.f;T.f={la,lo,h:h!=null?h:(old?old.h:T.h||0)}}
+  else if(ED.wh==='new'){T.sec.push({la,lo,h:h!=null?h:(T.h||0)});ED.wh='k'+(T.sec.length-1)}
+  else if(ED.wh.startsWith('k')){const x=T.sec[+ED.wh.slice(1)];x.la=la;x.lo=lo;if(h!=null)x.h=h}
+  else{T.la=la;T.lo=lo;if(h!=null)T.h=h}
   $('tedst').textContent=h!=null?'線を置き、近くの走行記録に向きを合わせました（'+Math.round(h)+'°）。':'近くに走行記録がないので、向き（矢印）をスライダーで合わせてください。';
   edDraw();
 }
-$('ttype').onchange=e=>{ED.T.type=e.target.value;if(ED.T.type==='loop'){ED.wh='s';$('twh').value='s'}edDraw()};
+$('ttype').onchange=e=>{ED.T.type=e.target.value;if(ED.T.type==='loop'&&ED.wh==='f')ED.wh='s';edDraw()};
+$('tsdel').onclick=()=>{if(!ED||!ED.wh.startsWith('k'))return;ED.T.sec.splice(+ED.wh.slice(1),1);ED.wh='s';edDraw()};
 $('twh').onchange=e=>{ED.wh=e.target.value;edDraw()};
 $('th').oninput=e=>{const ln=edLine();if(!ln)return;ln.h=+e.target.value;$('thv').textContent=ln.h;edDraw()};
 $('tflip').onclick=()=>{const ln=edLine();if(!ln)return;ln.h=(ln.h+180)%360;edDraw()};
@@ -1033,6 +1082,24 @@ $('tsave').onclick=()=>{
   cfg.trackId=T.id;saveCfg();LP.T=null;lapReset();renderTrackUi();
   ED=null;$('tedw').hidden=true;msg('コース「'+T.name+'」を保存しました。');
 };
+// ラップタブの地図: 現在地・今回の走行・スタート／ゴールの線
+let LMM=null;
+function lapMap(){
+  if(!LMM){if(!(LMM=makeMap($('lmap'))))return;LMM.trc=L.polyline([],{pane:'trk',color:'#1d4ed8',weight:4,opacity:.8}).addTo(LMM.map)}
+  LMM.trc.setLatLngs(trk.map(p=>[p.la,p.lo]));
+  setTimeout(()=>LMM.map.invalidateSize(),50);
+  drawSF();
+  const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1],T=LP.T||activeTrack(gps.lat,gps.lon)||(cfg.trackId&&tracks.find(t=>t.id===cfg.trackId));
+  if(p){LMM.cur.setLatLng([p.la,p.lo]).addTo(LMM.map);LMM.map.setView([p.la,p.lo],16)}else if(T)lapFitTrack(T);
+}
+function lapFitTrack(T){if(!LMM||!T)return;const pts=[[T.la,T.lo]];if(T.f)pts.push([T.f.la,T.f.lo]);if(pts.length>1)LMM.map.fitBounds(L.latLngBounds(pts),{padding:[40,40],maxZoom:17});else LMM.map.setView(pts[0],17)}
+function lapMapFix(la,lo){   // GPSのたびに更新
+  if(LMM&&!$('pt').hidden){LMM.trc.addLatLng([la,lo]);LMM.cur.setLatLng([la,lo]).addTo(LMM.map);if(LMM.follow)LMM.map.panTo([la,lo],{animate:false})}
+  if(TM&&ED){TM.cur.setLatLng([la,lo]).addTo(TM.map)}
+}
+$('lmfol').onclick=()=>{if(!LMM)return;LMM.follow=true;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){LMM.cur.setLatLng([p.la,p.lo]).addTo(LMM.map);LMM.map.setView([p.la,p.lo],Math.max(LMM.map.getZoom(),16))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
+$('lmall').onclick=()=>{const T=LP.T||activeTrack(gps.lat,gps.lon)||(cfg.trackId&&tracks.find(t=>t.id===cfg.trackId));if(T){LMM.follow=false;lapFitTrack(T)}else msg('使うコースがありません。')};
+$('tfol').onclick=()=>{if(!TM)return;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){TM.cur.setLatLng([p.la,p.lo]).addTo(TM.map);TM.map.setView([p.la,p.lo],Math.max(TM.map.getZoom(),17))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
 $('trnew').onclick=()=>openEditor(null);
 $('tredit').onclick=()=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(T)openEditor(T)};
 renderTrackUi();
@@ -1049,17 +1116,20 @@ function rowDist(rows){   // 各行の走行距離（位置が変わった行の
   return{D,keys};
 }
 function lapsFromRows(rows,T){
-  const {D,keys}=rowDist(rows),laps=[],sprint=T.type==='sprint'&&T.f;let st=null;
+  const {D,keys}=rowDist(rows),laps=[],sprint=T.type==='sprint'&&T.f,NS=(T.sec||[]).length;let st=null;
+  const push=(t1,d1)=>{const time=t1-st.t;laps.push({n:laps.length+1,t0:st.t,t1,d0:st.d,d1,time,secs:NS?secTimes(st.sp,time,NS):null,sd:st.sd.slice()})};
+  const begin=(t,d)=>{st={t,d,sp:[],sd:[],si:0}};
   for(let k=1;k<keys.length;k++){
     const a=keys[k-1],b=keys[k],at=f=>rows[a.i][0]+(rows[b.i][0]-rows[a.i][0])*f,dt=f=>a.d+(b.d-a.d)*f;
+    if(st&&st.si<NS){const fk=crossLine(secLine(T,st.si),a,b);if(fk!=null){st.sp[st.si]=at(fk)-st.t;st.sd[st.si]=dt(fk)-st.d;st.si++}}
     const fs=crossLine(sLine(T),a,b),ff=sprint?crossLine(fLine(T),a,b):fs;
     if(!sprint){
       if(fs==null)continue;const tc=at(fs);if(st&&tc-st.t<=10)continue;
-      if(st)laps.push({n:laps.length+1,t0:st.t,t1:tc,d0:st.d,d1:dt(fs),time:tc-st.t});
-      st={t:tc,d:dt(fs)};
+      if(st)push(tc,dt(fs));
+      begin(tc,dt(fs));
     }else{
-      if(st&&ff!=null&&at(ff)-st.t>3){laps.push({n:laps.length+1,t0:st.t,t1:at(ff),d0:st.d,d1:dt(ff),time:at(ff)-st.t});st=null}
-      else if(fs!=null)st={t:at(fs),d:dt(fs)};
+      if(st&&ff!=null&&at(ff)-st.t>3){push(at(ff),dt(ff));st=null}
+      else if(fs!=null)begin(at(fs),dt(fs));
     }
   }
   return{laps,D};
@@ -1083,7 +1153,7 @@ function trackForLog(L){
   return tracks.find(T=>logNearTrack(L,T))||null;
 }
 const lapCache={};
-function lapsOfLog(L,T){const k=L.id+'|'+T.id+'|'+T.w+'|'+T.h+'|'+T.la+'|'+(T.f?T.f.la+','+T.f.h:'');if(!lapCache[k])lapCache[k]=lapsFromRows(L.rows,T);return lapCache[k]}
+function lapsOfLog(L,T){const k=L.id+'|'+T.id+'|'+T.w+'|'+T.h+'|'+T.la+'|'+(T.f?T.f.la+','+T.f.h:'')+'|'+JSON.stringify(T.sec||[]);if(!lapCache[k])lapCache[k]=lapsFromRows(L.rows,T);return lapCache[k]}
 function renderVLap(){
   const w=$('vlap');if(!V){w.hidden=true;return}
   const hasGps=V.trk.length>1;w.hidden=!hasGps;if(!hasGps)return;
@@ -1091,10 +1161,12 @@ function renderVLap(){
   $('vtr').innerHTML='<option value="">（なし）</option>'+tracks.map(t=>'<option value="'+t.id+'">'+t.name.replace(/</g,'&lt;')+'</option>').join('');
   $('vtr').value=T?T.id:'';
   const R=T?lapsOfLog(V.L,T):{laps:[]};V.lapR=R;
-  const best=R.laps.length?Math.min(...R.laps.map(l=>l.time)):null;
+  const best=R.laps.length?Math.min(...R.laps.map(l=>l.time)):null,NS=T&&T.sec?T.sec.length:0,bs=[];
+  if(NS)R.laps.forEach(l=>l.secs&&l.secs.forEach((v,k)=>{if(v!=null&&(bs[k]==null||v<bs[k]))bs[k]=v}));
+  const tb=NS&&R.laps.length>1?theoBest(bs):null;
   $('vlpl').innerHTML=!T?'<li class="none">コースを選ぶか、再生位置をスタート／ゴールにすると、ラップに分けます。</li>'
     :!R.laps.length?'<li class="none">このログには、スタート／ゴールを2回通過した記録がありません。</li>'
-    :R.laps.map(l=>'<li data-n="'+l.n+'" class="'+(l.time===best?'best ':'')+(V.lapA&&V.lapA.n===l.n?'sel':'')+'"><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===best?'ベスト':fmtDelta(l.time-best))+'</small></li>').join('');
+    :R.laps.map(l=>'<li data-n="'+l.n+'" class="'+(l.time===best?'best ':'')+(V.lapA&&V.lapA.n===l.n?'sel':'')+'"><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===best?'ベスト':fmtDelta(l.time-best))+'</small>'+secRow(l.secs,bs)+'</li>').join('')+(tb!=null?'<li class="none">理論ベスト（各セクションのベストの合計） <b>'+fmtLap(tb)+'</b></li>':'');
   // 比べる相手: このログのほかのラップと、同じコースのほかのログのラップ
   const opts=['<option value="">（なし）</option>'];
   if(T){
@@ -1163,6 +1235,11 @@ function drawLapCmp(){
   const gr=(a,b)=>{const m=Math.max(.3,...a.map(Math.abs),...(b||[]).map(Math.abs));return[.3,.5,.8,1.2,2].find(r=>r>=m*1.1)||2};
   [[2,'左右G','x'],[3,'前後G','y']].forEach(([k,lab,key])=>{const r=gr(A[key],B&&B[key]);panel(k,lab,ci!=null&&A[key][ci]!=null?(A[key][ci]>0?'+':'')+A[key][ci].toFixed(2)+(B&&B[key][ci]!=null?' / '+(B[key][ci]>0?'+':'')+B[key][ci].toFixed(2):''):null,top=>{const mid=top+H/2+6,sc=(H/2-12)/r;[r,0,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'−')+Math.abs(v),v===0));if(B)ln(B[key],cb,mid,sc,true);ln(A[key],ca,mid,sc)})});
   x.fillStyle=mut;x.font='9px system-ui';x.textAlign='center';for(let d=st;d<len;d+=st)x.fillText(d+'m',px(d),H*NP+TS-3);
+  if(V.lapA&&V.lapA.sd&&V.lapA.sd.length){   // セクションの境目（紫の点線）
+    x.strokeStyle='#8b5cf6';x.lineWidth=1.2;x.setLineDash([4,3]);x.fillStyle='#8b5cf6';x.font='600 10px system-ui';x.textAlign='left';
+    V.lapA.sd.forEach((d,k)=>{if(d==null)return;const X=Math.round(px(d))+.5;x.beginPath();x.moveTo(X,0);x.lineTo(X,H*NP);x.stroke();x.fillText('S'+(k+2),X+3,H*NP+TS-3)});
+    x.setLineDash([]);
+  }
   if(ci!=null){x.strokeStyle=fg;x.lineWidth=1.5;x.beginPath();x.moveTo(px(ci*5),0);x.lineTo(px(ci*5),H*NP);x.stroke()}
 }
 $('lapc').addEventListener('pointerdown',e=>{   // タップした距離へカーソルを移動
@@ -1184,7 +1261,7 @@ function startGps(){
       pushRecent(c.latitude,c.longitude);
       queryLimit(c.latitude,c.longitude);
       updHdg(c.latitude,c.longitude,c);maybeCams(c.latitude,c.longitude);checkCams(c.latitude,c.longitude);
-      lapFix(c.latitude,c.longitude,p.timestamp);
+      lapFix(c.latitude,c.longitude,p.timestamp);lapMapFix(c.latitude,c.longitude);
     }
   },()=>msg('位置情報を取得できません。位置情報の許可を確認してください。'),{enableHighAccuracy:true,maximumAge:0});
 }
@@ -1608,6 +1685,7 @@ function openL(L){
   V.lapT=trackForLog(L);V.lapA=null;V.lapBKey=null;vAutoLap();renderVLap();
 }
 $('vall').onclick=()=>{if(V&&VM)fitAll(VM,V.trk)};
+$('vfol').onclick=()=>{if(!V||!VM)return;const cp=V.cur[V.i]||V.trk[0];if(cp)VM.map.setView([cp.la,cp.lo],Math.max(VM.map.getZoom(),16))};
 function vseek(i){
   if(i<V.i){V.env.fill(0);V.peak=0;V.i=-1}
   for(let j=V.i+1;j<=i;j++){const r=V.rows[j];if(r[3]>V.peak)V.peak=r[3];if(r[3]>.02)envAdd(V.env,r[1],-r[2],r[3])}
