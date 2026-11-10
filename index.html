@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.27.0 (2026-11-10) 表示の符号をそろえる: 左右Gとヨーレートは左旋回が＋、前後Gは加速が＋（数値・最大G・グラフ・ラップ比較・CSV）。
+                     修正: ログを保存するときに上下G・標高・ヨーレート・勾配などの列が落ちていた。ジャークの最大値と減点の棒が記録されていなかった
   1.26.0 (2026-11-10) 勾配補正（設定、初期値オフ）: GPSの車速の変化とジャイロのヨーレートから本当の加速度を推定し、坂道・カントで出るGを差し引く。
                      勾配・カント（%）とヨーレートを表示・記録・グラフ化・CSVに追加。ログ再生で補正前のGに切り替えられる
   1.25.0 (2026-11-10) ラップ計測の開始を読み上げ。地図のセクションの線に番号。コース編集で選んだ線へ地図が移動、セクションの線を間にも追加できるように。
@@ -318,7 +320,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.26.0',APP_DATE='2026-11-10';
+const APP_VERSION='1.27.0',APP_DATE='2026-11-10';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -551,7 +553,7 @@ async function showStor(){
 }
 function saveLog(sc,vm){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
-  const rows=log.map(r=>[q(r[0],1),q(r[1],3),q(r[2],3),q(r[3],3),q(r[4],1),q(r[5],6),q(r[6],6)]);
+  const D=[1,3,3,3,1,6,6,3,1,1,1,1,3,3],rows=log.map(r=>r.map((v,k)=>q(v,D[k]??3)));   // すべての列を保存（桁を丸める）
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
   addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()},vm).then(r=>{
   if(!r.ok)exportCsv(r.L);
@@ -566,7 +568,7 @@ function addLog(rows,name,sc,pen,vm){
 }
 function exportCsv(L){
   const f=v=>v==null?'':v;
-  const t='秒,左右G,前後G,合成G,km/h,緯度,経度,上下G,標高m,ヨーレート°/s(右+),勾配%(上り+),カント%(右下がり+),補正前左右G,補正前前後G\n'+L.rows.map(r=>{const a=r.slice(0,14);while(a.length<14)a.push(null);return a.map(f).join(',')}).join('\n');
+  const t='秒,左右G(左+),前後G(加速+),合成G,km/h,緯度,経度,上下G,標高m,ヨーレート°/s(左+),勾配%(上り+),カント%(右下がり+),補正前左右G(左+),補正前前後G(加速+)\n'+L.rows.map(r=>{const a=r.slice(0,14);while(a.length<14)a.push(null);[2,13].forEach(k=>{if(a[k]!=null)a[k]=-a[k]});return a.map(f).join(',')}).join('\n');
   const d=new Date(L.id),p2=n=>String(n).padStart(2,'0');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));
@@ -576,12 +578,12 @@ function exportCsv(L){
 }
 function parseCsv(t){
   const n=v=>{const x=parseFloat(v);return isFinite(x)?x:null};
-  const rows=[];
+  const rows=[],acc=/加速\+/.test(t.slice(0,300)),ng=v=>acc&&v!=null?-v:v;   // 新しい形式（前後G＝加速＋）は中の形式（減速＋）に戻す
   t.split(/\r?\n/).forEach(l=>{
     const c=l.trim().split(',');if(c.length<3)return;
     const tt=n(c[0]),x=n(c[1]),y=n(c[2]);if(tt==null||x==null||y==null)return;
     const m=n(c[3]);
-    rows.push([tt,x,y,m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8]),n(c[9]),n(c[10]),n(c[11]),n(c[12]),n(c[13])]);
+    rows.push([tt,x,ng(y),m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8]),n(c[9]),n(c[10]),n(c[11]),n(c[12]),ng(n(c[13]))]);
   });
   return rows;
 }
@@ -1164,7 +1166,7 @@ function lapSeries(rows,D,lap){   // 5mごとに、経過時間・車速・G・�
     const dd=lap.d0+s;while(k<idx.length-2&&D[idx[k+1]]<dd)k++;
     const i=idx[k],j=idx[k+1],di=D[i],dj=D[j],f=dj>di?Math.min(1,Math.max(0,(dd-di)/(dj-di))):0,a=rows[i],b=rows[j];
     const mix=(p,q)=>p==null?q:q==null?p:p+(q-p)*f;
-    o.d.push(s);o.t.push(mix(a[0],b[0])-lap.t0);o.sp.push(mix(a[4],b[4]));o.x.push(mix(a[1],b[1]));o.y.push(mix(a[2],b[2]));o.ri.push(f<.5?i:j);
+    o.d.push(s);o.t.push(mix(a[0],b[0])-lap.t0);o.sp.push(mix(a[4],b[4]));o.x.push(mix(a[1],b[1]));o.y.push(-mix(a[2],b[2]));   // 表示は加速が＋o.ri.push(f<.5?i:j);
     if(a[5]!=null)o.ll.push([a[5],a[6]]);
   }
   return o;
@@ -1255,7 +1257,7 @@ function drawLapCmp(){
   const smax=Math.max(40,...A.sp.filter(v=>v!=null),...(B?B.sp.filter(v=>v!=null):[0])),rs=Math.ceil(smax*1.1/20)*20,ss=rs<=60?20:rs<=120?40:rs<=200?50:100;
   panel(1,'車速 km/h',ci!=null&&A.sp[ci]!=null?Math.round(A.sp[ci])+(B&&B.sp[ci]!=null?' / '+Math.round(B.sp[ci]):'')+' km/h':null,top=>{const base=top+H-6,sc=(H-24)/rs;for(let v=0;v<=rs;v+=ss)grid(base-v*sc,String(v));if(B)ln(B.sp,cb,base,sc,true);ln(A.sp,ca,base,sc)});
   const gr=(a,b)=>{const m=Math.max(.3,...a.map(Math.abs),...(b||[]).map(Math.abs));return[.3,.5,.8,1.2,2].find(r=>r>=m*1.1)||2};
-  [[2,'左右G','x'],[3,'前後G','y']].forEach(([k,lab,key])=>{const r=gr(A[key],B&&B[key]);panel(k,lab,ci!=null&&A[key][ci]!=null?(A[key][ci]>0?'+':'')+A[key][ci].toFixed(2)+(B&&B[key][ci]!=null?' / '+(B[key][ci]>0?'+':'')+B[key][ci].toFixed(2):''):null,top=>{const mid=top+H/2+6,sc=(H/2-12)/r;[r,0,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'−')+Math.abs(v),v===0));if(B)ln(B[key],cb,mid,sc,true);ln(A[key],ca,mid,sc)})});
+  [[2,'左右G（左＋）','x'],[3,'前後G（加速＋）','y']].forEach(([k,lab,key])=>{const r=gr(A[key],B&&B[key]);panel(k,lab,ci!=null&&A[key][ci]!=null?(A[key][ci]>0?'+':'')+A[key][ci].toFixed(2)+(B&&B[key][ci]!=null?' / '+(B[key][ci]>0?'+':'')+B[key][ci].toFixed(2):''):null,top=>{const mid=top+H/2+6,sc=(H/2-12)/r;[r,0,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'−')+Math.abs(v),v===0));if(B)ln(B[key],cb,mid,sc,true);ln(A[key],ca,mid,sc)})});
   x.fillStyle=mut;x.font='9px system-ui';x.textAlign='center';for(let d=st;d<len;d+=st)x.fillText(d+'m',px(d),H*NP+TS-3);
   if(V.lapA&&V.lapA.sd&&V.lapA.sd.length){   // セクションの境目（紫の点線）
     x.strokeStyle='#8b5cf6';x.lineWidth=1.2;x.setLineDash([4,3]);x.fillStyle='#8b5cf6';x.font='600 10px system-ui';x.textAlign='left';
@@ -1607,12 +1609,12 @@ function drawPanels(c,w,pts,full,cur,win){
     [r,r/2,0,-r/2,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+(+v.toFixed(2)),v===0));
     line(key,mid,sc);
   });
-  gPanel(0,'x',(full?'':'過去30秒　')+'左右G',rx);
-  gPanel(1,'y','前後G',ry);
+  gPanel(0,'x',(full?'':'過去30秒　')+'左右G（左旋回＋）',rx);
+  gPanel(1,'y','前後G（加速＋）',ry);
   gPanel(2,'z','上下G',rz);
   let yr=0,sr=0;pts.forEach(p=>{if(p.yaw!=null)yr=Math.max(yr,Math.abs(p.yaw));if(p.gr!=null)sr=Math.max(sr,Math.abs(p.gr));if(p.ca!=null)sr=Math.max(sr,Math.abs(p.ca))});
   const ryaw=[10,20,45,90,180].find(r=>r>=yr*1.1)||360,rsl=[5,10,20,40].find(r=>r>=sr*1.1)||60;
-  panel(3,'ヨーレート °/s（右旋回＋）',cp?(cp.yaw==null?'-- °/s':(cp.yaw>0?'+':'')+cp.yaw.toFixed(1)+' °/s'):null,top=>{
+  panel(3,'ヨーレート °/s（左旋回＋）',cp?(cp.yaw==null?'-- °/s':(cp.yaw>0?'+':'')+cp.yaw.toFixed(1)+' °/s'):null,top=>{
     if(!pts.some(p=>p.yaw!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('ヨーレートのデータがありません',w/2,top+H/2+6);return}
     const mid=top+H/2+6,sc=(H/2-12)/ryaw;[ryaw,0,-ryaw].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));line('yaw',mid,sc);
   });
@@ -1698,7 +1700,7 @@ function openL(L){
     cur.push(last);
   });
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
-  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pj:pen.pj[i]||0,ev:null}));
+  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pj:pen.pj[i]||0,ev:null}));
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
   vClearVid();
   V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null,z:{a:0,b:rows.length-1}};
@@ -1720,7 +1722,7 @@ function openL(L){
 $('vall').onclick=()=>{if(V&&VM)fitAll(VM,V.trk)};
 const vX=r=>V.raw&&r[12]!=null?r[12]:r[1],vY=r=>V.raw&&r[13]!=null?r[13]:r[2];   // 再生: 補正後／補正前のG
 $('vraw').onclick=()=>{if(!V)return;V.raw=!V.raw;$('vraw').classList.toggle('on',V.raw);$('vraw').textContent=V.raw?'補正前のG（表示中）':'補正前のG';
-  V.pts.forEach((p,i)=>{const r=V.rows[i];p.x=vX(r);p.y=vY(r)});V.env.fill(0);V.peak=0;const i=V.i;V.i=-1;vseek(Math.max(0,i))};
+  V.pts.forEach((p,i)=>{const r=V.rows[i];p.x=vX(r);p.y=-vY(r)});V.env.fill(0);V.peak=0;const i=V.i;V.i=-1;vseek(Math.max(0,i))};
 $('vfol').onclick=()=>{if(!V||!VM)return;const cp=V.cur[V.i]||V.trk[0];if(cp)VM.map.setView([cp.la,cp.lo],Math.max(VM.map.getZoom(),16))};
 function vseek(i){
   if(i<V.i){V.env.fill(0);V.peak=0;V.i=-1}
@@ -1856,7 +1858,8 @@ function feedScore(S,x,y,dt,sp){
     const pv=Math.min(1,Math.max(0,(j-0.25)/0.95));S.act+=dt;S.pen+=pv*dt;
     const cl=q=>Math.min(1,Math.max(0,(Math.abs(q)-0.25)/0.95));S.penX+=cl(S.jx)*dt;S.penY+=cl(S.jy)*dt;
     if(Math.abs(S.lx2)>0.08){const p=cl(S.jx);phAdd(S,S.lx2*S.jx>0?'latIn':'latOut',p,dt);phAdd(S,S.lx2<0?'latR':'latL',p,dt)}   // 切り増し／切り戻し、右／左カーブ
-    if(Math.abs(S.ly2)>0.08)phAdd(S,(S.ly2>0?'yP':'yN')+(S.ly2*S.jy>0?'In':'Out'),cl(S.jy),dt);   // 前後Gが増える途中／減る途中   // 横（左右）と縦（前後）を別々にif(pv>S.bucketP)S.bucketP=pv;if(j>S.jmax)S.jmax=j;
+    if(Math.abs(S.ly2)>0.08)phAdd(S,(S.ly2>0?'yP':'yN')+(S.ly2*S.jy>0?'In':'Out'),cl(S.jy),dt);   // 前後Gが増える途中／減る途中
+    if(pv>S.bucketP)S.bucketP=pv;if(j>S.jmax)S.jmax=j;
   }
   if(S.t-S.lastS>=0.05){
     S.lastS=S.t;S.hist.push({t:S.t,jx:S.jx,jy:S.jy,j,g});
@@ -1999,14 +2002,14 @@ function loop(now){
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
   let rx=tx,ry=ty;
   if(sensor&&basis){slStep(tx,ty,dt);if(cfg.slope){tx-=SL.bx;ty-=slSy()*SL.by}}
-  const yawD=yawLeft()==null?null:-yawLeft(),slOn=!!(cfg.slope&&SL.ok);   // ヨーレートの表示は右旋回＋
+  const yawD=yawLeft(),slOn=!!(cfg.slope&&SL.ok);   // ヨーレートの表示は左旋回＋
   if(rec&&scorer&&sensor)feedScore(scorer,tx,ty,dt,gps.sp);
   if(liveS&&sensor)feedScore(liveS,tx,ty,dt,gps.sp);
   const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
   sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;sg.z+=(tz-sg.z)*al;sgR.x+=(rx-sgR.x)*al;sgR.y+=(ry-sgR.y)*al;
   const m=Math.hypot(sg.x,sg.y);
   if(m>peak)peak=m;
-  {const A=axMax,vx=sg.x,vy=-sg.y,vz=sg.z;   // 軸ごとの＋側・−側の最大（表示と同じ向き）
+  {const A=axMax,vx=sg.x,vy=sg.y,vz=sg.z;   // 軸ごとの＋側・−側の最大（表示と同じ向き）
    if(vx>A.xp)A.xp=vx;if(vx<A.xn)A.xn=vx;if(vy>A.yp)A.yp=vy;if(vy<A.yn)A.yn=vy;if(vz>A.zp)A.zp=vz;if(vz<A.zn)A.zn=vz}
   curM=Math.max(curM,m);
   S=nice(peak);
@@ -2019,7 +2022,7 @@ function loop(now){
     lastS=now;
     let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
     const gr=slOn?+slPct(SL.by).toFixed(1):null,ca=slOn?+slPct(SL.bx).toFixed(1):null,yw=yawD==null?null:+yawD.toFixed(1);
-    hist.push({t:now/1000,x:sg.x,y:-sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca});if(hist.length>N)hist.shift();
+    hist.push({t:now/1000,x:sg.x,y:sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca});if(hist.length>N)hist.shift();
     if(rec){
       log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt,yw,gr,ca,cfg.slope?+sgR.x.toFixed(3):null,cfg.slope?+(-sgR.y).toFixed(3):null]);
       logPen.push(scorer?+takeP(scorer).toFixed(2):0);
@@ -2030,7 +2033,7 @@ function loop(now){
     $('mag').textContent=m.toFixed(2);
     const z2=v=>(Math.abs(v)<.005?0:v).toFixed(2);   // -0.00 を 0.00 にする
     $('gx').textContent=z2(sg.x);
-    $('gy').textContent=z2(-sg.y);
+    $('gy').textContent=z2(sg.y);   // 前後Gは加速が＋
     $('gz').textContent=z2(sg.z);
     {const A=axMax,f=(v,sg)=>(sg>0?'+':'-')+Math.abs(v).toFixed(2);
      $('gxp').textContent=f(A.xp,1);$('gxn').textContent=f(A.xn,-1);$('gyp').textContent=f(A.yp,1);$('gyn').textContent=f(A.yn,-1);$('gzp').textContent=f(A.zp,1);$('gzn').textContent=f(A.zn,-1)}
