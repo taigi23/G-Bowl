@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.24.1 (2026-11-10) 修正: 地図のスタート／ゴール・セクションの線の向きの表示を、先の丸から矢印に変更（向きが分かりやすいように）
   1.24.0 (2026-11-10) セクションタイム: コースにセクションの線（最大9本）を地図で追加。ライブで通過時にセクションタイムとベストとの差、理論ベスト。
                      ログのラップ一覧にセクションタイム（各ベストは紫）と理論ベスト、比較グラフにセクションの境目
   1.23.0 (2026-11-10) ラップタブに地図（現在地・今回の走行・スタート／ゴール）を追加。ラップの地図・コース設定の地図に「現在地」、
@@ -304,7 +305,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.24.0',APP_DATE='2026-11-09';
+const APP_VERSION='1.24.1',APP_DATE='2026-11-10';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -976,7 +977,9 @@ function lapTick(){   // 画面の更新（毎フレーム）
 }
 function drawLines(G,T){   // スタート＝緑と白、ゴール（周回はスタート／ゴール）＝黒と白のチェッカー。矢印は進む向き
   const one=(ln,col)=>{const e=lineEnds(ln);L.polyline(e,{pane:'mrk',color:col,weight:7,opacity:.95}).addTo(G);L.polyline(e,{pane:'mrk',color:'#fff',weight:3,dashArray:'4 4'}).addTo(G);
-    const h=ln.h*Math.PI/180,c=Math.cos(ln.la*Math.PI/180),tip=[ln.la+Math.cos(h)*22/110540,ln.lo+Math.sin(h)*22/(111320*c)];L.polyline([[ln.la,ln.lo],tip],{pane:'mrk',color:col,weight:3}).addTo(G);L.circleMarker(tip,{pane:'mrk',radius:4,color:col,fillColor:col,fillOpacity:1,weight:1}).addTo(G)};
+    const h=ln.h*Math.PI/180,c=Math.cos(ln.la*Math.PI/180),at=(f,s)=>[ln.la+(Math.cos(h)*f-Math.sin(h)*s)/110540,ln.lo+(Math.sin(h)*f+Math.cos(h)*s)/(111320*c)];   // f=前へ, s=右へ（m）
+    L.polyline([[ln.la,ln.lo],at(20,0)],{pane:'mrk',color:col,weight:4}).addTo(G);
+    L.polygon([at(38,0),at(16,-11),at(21,0),at(16,11)],{pane:'mrk',color:'#fff',weight:1.5,fillColor:col,fillOpacity:1}).addTo(G)};   // 進む向きの矢印
   (T.sec||[]).forEach((x,k)=>one(secLine(T,k),'#8b5cf6'));   // セクションの線＝紫
   if(T.type==='sprint'&&T.f){one(sLine(T),'#16a34a');one(fLine(T),'#111')}else one(T,'#111');
 }
