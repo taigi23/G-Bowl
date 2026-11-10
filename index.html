@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.27.1 (2026-11-11) 修正: 0点合わせの直後、表示が0に戻る途中の値で最大Gが更新されていた（合わせた瞬間に表示を0にし、0.5秒は最大値を更新しない）
   1.27.0 (2026-11-10) 表示の符号をそろえる: 左右Gとヨーレートは左旋回が＋、前後Gは加速が＋（数値・最大G・グラフ・ラップ比較・CSV）。
                      修正: ログを保存するときに上下G・標高・ヨーレート・勾配などの列が落ちていた。ジャークの最大値と減点の棒が記録されていなかった
   1.26.0 (2026-11-10) 勾配補正（設定、初期値オフ）: GPSの車速の変化とジャイロのヨーレートから本当の加速度を推定し、坂道・カントで出るGを差し引く。
@@ -320,7 +321,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.27.0',APP_DATE='2026-11-10';
+const APP_VERSION='1.27.1',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -459,6 +460,7 @@ function calibrate(){
   const g=gf||raw,B=makeBasis(g);
   if(!B){msg('置き方を読み取れませんでした。スマホを動かさずに、もう一度「0点合わせ」を押してください。');return false}
   basis=B;cfg.g0=B.g;saveCfg();slReset(true);
+  sg={x:0,y:0,z:0};sgR={x:0,y:0};trail=[];maxHold=performance.now()+500;   // 古い0点の値から0へ戻る途中で最大値を更新しない
   if(gf)env.fill(0);
   msg('0点を合わせました（'+poseName(B)+'）。');
   return true;
@@ -1965,7 +1967,7 @@ function scoreHtml(sc){
     +'<p class="mcap">路面や振動などの速い揺れ（約2Hzより速いもの）はノイズとして採点から除外しています（ノイズ量 '+sc.noise+' G/s）。評価した運転操作の時間：'+sc.act+'秒</p></div>';
 }
 // ===== 勾配補正: 本当の加速度（前後＝GPSの車速の変化、左右＝車速×ヨーレート）とセンサーの差のうち、ゆっくり変わる分を勾配・カントとみなす =====
-let yawRaw=null,sgR={x:0,y:0};
+let yawRaw=null,sgR={x:0,y:0},maxHold=0;
 const SL={bx:0,by:0,xsg:0,ysg:0,yb:0,g:null,W:null,ok:false};
 function slReset(all){SL.bx=0;SL.by=0;SL.ok=false;SL.g=null;SL.W=null;if(all){SL.xsg=0;SL.ysg=0}}
 const slSy=()=>SL.ysg<-0.3?-1:1,slGs=()=>SL.xsg<-0.3?-1:1;   // 向きの確認（前後Gの符号・ジャイロの符号）
@@ -2008,12 +2010,13 @@ function loop(now){
   const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
   sg.x+=(tx-sg.x)*al;sg.y+=(ty-sg.y)*al;sg.z+=(tz-sg.z)*al;sgR.x+=(rx-sgR.x)*al;sgR.y+=(ry-sgR.y)*al;
   const m=Math.hypot(sg.x,sg.y);
-  if(m>peak)peak=m;
-  {const A=axMax,vx=sg.x,vy=sg.y,vz=sg.z;   // 軸ごとの＋側・−側の最大（表示と同じ向き）
+  const hold=now<maxHold;
+  if(!hold&&m>peak)peak=m;
+  if(!hold){const A=axMax,vx=sg.x,vy=sg.y,vz=sg.z;   // 軸ごとの＋側・−側の最大（表示と同じ向き）
    if(vx>A.xp)A.xp=vx;if(vx<A.xn)A.xn=vx;if(vy>A.yp)A.yp=vy;if(vy<A.yn)A.yn=vy;if(vz>A.zp)A.zp=vz;if(vz<A.zn)A.zn=vz}
   curM=Math.max(curM,m);
   S=nice(peak);
-  if(m>.02)envAdd(env,sg.x,sg.y,m);
+  if(!hold&&m>.02)envAdd(env,sg.x,sg.y,m);
   setVol(m);
   checkOver();
   trail.push({x:sg.x,y:sg.y});
