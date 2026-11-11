@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.1.1 (2026-11-11) 0点合わせのボタンを「詳細」の中から、開始・記録の横へ移動（1回のタップで押せる）
   2.1.0 (2026-11-11) 二輪モード（ベータ、設定でオン）: 車体ごと傾くバイク向けに、傾き（バンク角）をジャイロと「車速×ヨーレート」から大きな角度まで推定。
                      左右Gはバンク角から求めた旋回Gを表示（ボール・最大G・警告音・採点・ログに反映）、ヨーレートは鉛直まわりに換算、水平線は実際のバンク角で傾く。
                      バンク角（°）と最大バンクを表示・記録・グラフ化・CSVに追加。採点のアドバイスを二輪向けの言い回しに。直進中に「直立」を自動で覚える
@@ -127,7 +128,8 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .hud{display:flex;justify-content:space-between;align-items:center;min-height:1.6em;margin:0 2px 6px;font-size:.85rem;color:var(--mut);font-variant-numeric:tabular-nums}
 .hud b{color:var(--fg)}
 .rdot,.rdot b{color:var(--peak)}
-.btns.main{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.btns.main{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:10px}
+.btns.main #cal{padding:0 18px}
 .btns.main button{min-height:56px;font-size:1.05rem;font-weight:700}
 #dt{margin-top:12px}
 .row2s{grid-template-columns:repeat(2,1fr)}
@@ -266,6 +268,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns main">
 <button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
+<button id="cal" aria-label="0点合わせ">0点</button>
 </div>
 <details id="dt"><summary><span>最大 <b id="pks">0.00</b> G</span><span class="dtl">詳細</span></summary>
 <div class="row">
@@ -289,7 +292,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div><small>最大バンク 右</small><strong id="bkr">0°</strong></div>
 </div>
 <div class="btns">
-<button id="cal">0点合わせ</button><button id="rst">最大値を消す</button>
+<button id="rst">最大値を消す</button>
 <button id="cam">カメラ</button>
 <button id="vdl" hidden>動画を保存</button>
 </div>
@@ -424,7 +427,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.1.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.1.1',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
