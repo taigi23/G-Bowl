@@ -4,6 +4,14 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.0.0 (2026-11-11) 画面を作り直し。メーター: ボールの背景に水平線（勾配・カント）、外周にヨーレートの弧、四隅に車速と合成G。常に出す数値は左右G・前後Gだけにし、
+                     ほかは「詳細」へ。開始・記録のボタンを大きく、記録中の経過時間を表示、横向きの配置に対応。
+                     ラップ: ベストとの差を大きく色付きで表示、セクションごとの結果を色付きの札で表示、ラップ一覧とコース設定は折りたたみ。
+                     ログ: 「ライブ」と「保存したログ」を切り替え。保存したログは軌跡の小さな図つきの一覧（タップで再生、「⋯」からCSV・名前の変更・削除）。
+                     グラフは出す項目を選べる（ライブ・再生で共通）。ピッチ・ロールの角速度（°/s）を記録し、ヨーレートと合わせて「回転」のグラフに表示、CSVにも追加
+  1.28.0 (2026-11-11) ヨーレートにローパス（設定「ヨーレートのLPF」、初期値2Hz）。勾配補正の精度を上げる: 傾きの変化をジャイロのピッチ・ロールで毎フレーム追い、
+                     GPSとの差でゆっくり直す。GPSの車速の遅れの分だけ区間をずらして比べる（遅れは自動で合わせる）。揺れ・低速では止めずに重みを下げて更新。
+                     左右反転・前後反転を切り替えても勾配・カントが引き継がれる。修正: ラップ比較のグラフをタップしても、その位置へ移動しなかった
   1.27.1 (2026-11-11) 修正: 0点合わせの直後、表示が0に戻る途中の値で最大Gが更新されていた（合わせた瞬間に表示を0にし、0.5秒は最大値を更新しない）
   1.27.0 (2026-11-10) 表示の符号をそろえる: 左右Gとヨーレートは左旋回が＋、前後Gは加速が＋（数値・最大G・グラフ・ラップ比較・CSV）。
                      修正: ログを保存するときに上下G・標高・ヨーレート・勾配などの列が落ちていた。ジャークの最大値と減点の棒が記録されていなかった
@@ -84,11 +92,12 @@ nav{display:flex;gap:6px}
 h2{font-size:.95rem;margin:18px 0 6px}
 #c,#vc,#g,#vg{display:block;width:100%;background:var(--panel)}
 #c,#vc{aspect-ratio:1;border-radius:50%}
+#c{border-radius:16px}
 #vc{width:min(100%,320px);margin:8px auto}
 .bw{position:relative}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
-#g,#vg{height:686px;border-radius:10px;margin-top:10px}
+#g,#vg{height:350px;border-radius:10px;margin-top:10px}
 #vg{touch-action:pan-y;cursor:crosshair;-webkit-user-select:none;user-select:none}
 #mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
 .mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
@@ -108,6 +117,59 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .row small{display:block;color:var(--mut);font-size:.68rem}
 .row strong{font-size:1rem}
 .row3{grid-template-columns:repeat(3,1fr);margin-bottom:6px}
+.row2{grid-template-columns:repeat(2,1fr);gap:8px}
+.row2>div{padding:10px 12px}
+.row2 strong{font-size:1.9rem;letter-spacing:-.02em}
+.row2 small{font-size:.75rem}
+.hud{display:flex;justify-content:space-between;align-items:center;min-height:1.6em;margin:0 2px 6px;font-size:.85rem;color:var(--mut);font-variant-numeric:tabular-nums}
+.hud b{color:var(--fg)}
+.rdot,.rdot b{color:var(--peak)}
+.btns.main{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.btns.main button{min-height:56px;font-size:1.05rem;font-weight:700}
+#dt{margin-top:12px}
+.row2s{grid-template-columns:repeat(2,1fr)}
+.fold{margin-top:12px;border-top:1px solid var(--ring)}
+.fold summary{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;color:var(--mut);font-size:.9rem;cursor:pointer;list-style:none;font-variant-numeric:tabular-nums}
+.fold summary::-webkit-details-marker{display:none}
+.fold summary b{color:var(--fg)}
+.fold .dtl::after{content:'開く ▾'}.fold[open] .dtl::after{content:'閉じる ▴'}
+.lnk{border:0;background:none;padding:0;color:var(--mut);font-size:.85rem;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lapbig .ldl{display:inline-block;min-height:1.35em;min-width:3em;font-size:1.7rem;padding:1px 16px;border-radius:10px}
+.ldl.fast{background:rgba(22,163,74,.16);color:#16a34a}.ldl.slow{background:rgba(220,38,38,.16);color:#dc2626}
+.lsec{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;font-variant-numeric:tabular-nums}
+.lsec span{flex:1 0 4.2em;text-align:center;padding:6px 2px;border-radius:8px;font-size:.78rem;border:1px solid var(--ring);color:var(--mut)}
+.lsec .done{background:var(--panel);color:var(--fg);border-color:transparent}
+.lsec .fast{background:rgba(22,163,74,.16);color:#16a34a;border-color:transparent}
+.lsec .slow{background:rgba(220,38,38,.16);color:#dc2626;border-color:transparent}
+.lsec .cur{color:var(--fg);border-color:var(--fg)}
+.lr2 strong{font-size:1.35rem}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--ring);border-radius:10px;overflow:hidden;margin-bottom:10px}
+.seg button{border:0;border-radius:0;background:none;padding:10px}
+.seg button.on{background:var(--btn);color:var(--btnfg)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.chips button{padding:6px 11px;font-size:.78rem;border-radius:16px;color:var(--mut)}
+.chips button.on{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
+li.lg{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:0;gap:0;align-items:stretch}
+.lgo{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;border:0;background:none;padding:10px 0 10px 12px;font-size:.95rem}
+.lgo b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lgo small{font-size:.75rem}
+.th{width:44px;height:44px;background:var(--bg);border-radius:8px}
+.lgs{text-align:right}.lgs b{font-size:1.3rem}
+.lgm{border:0;background:none;font-size:1.3rem;padding:0 14px;color:var(--mut)}
+.lgx{grid-column:1/-1;display:flex;gap:6px;padding:0 12px 10px}
+#dt summary{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;color:var(--mut);font-size:.9rem;cursor:pointer;list-style:none;font-variant-numeric:tabular-nums}
+#dt summary::-webkit-details-marker{display:none}
+#dt summary b{color:var(--fg);font-size:1.05rem}
+.dtl::after{content:' ▾'}
+#dt[open] .dtl::after{content:' ▴'}
+@media (orientation:landscape) and (max-height:520px){
+main{max-width:none}
+#pm{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start}
+#pm .bw{width:calc(100vh - 96px);min-width:200px}
+#pt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:start}
+#pt .fold{grid-column:1/-1}
+#lmap{height:calc(100vh - 150px);min-height:160px;margin-top:0}
+}
 .row .ax{display:flex;align-items:center;justify-content:space-between;gap:4px}
 .row .ax>div{background:none;padding:0;border-radius:0}
 .row .mm{display:flex;flex-direction:column;align-items:flex-end;font-size:.72rem;line-height:1.3;color:var(--mut)}
@@ -185,45 +247,68 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </header>
 <main>
 <section id="pm">
-<div class="bw"><canvas id="c" aria-label="Gボール"></canvas><div class="corner"><button id="cal">0点合わせ</button><button id="rst">最大値を消す</button></div></div>
-<div class="big"><b id="mag">0.00</b><span>G</span></div>
-<div class="row row3">
-<div class="ax"><div><small>左右</small><strong id="gx">0.00</strong></div><div class="mm" aria-label="左右の最大"><span id="gxp">+0.00</span><span id="gxn">-0.00</span></div></div>
-<div class="ax"><div><small>前後</small><strong id="gy">0.00</strong></div><div class="mm" aria-label="前後の最大"><span id="gyp">+0.00</span><span id="gyn">-0.00</span></div></div>
-<div class="ax"><div><small>上下</small><strong id="gz">0.00</strong></div><div class="mm" aria-label="上下の最大"><span id="gzp">+0.00</span><span id="gzn">-0.00</span></div></div>
+<div class="bcol">
+<div class="hud"><span id="rdot" class="rdot" hidden>● 記録中 <b id="rtm">0:00</b></span><span></span><span>制限 <b id="lim">--</b></span></div>
+<div class="bw"><canvas id="c" aria-label="Gボール"></canvas></div>
 </div>
-<div class="row">
-<div><small>最大G</small><strong id="pk">0.00</strong></div>
-<div><small>km/h</small><strong id="sp">--</strong></div>
-<div><small>制限</small><strong id="lim">--</strong></div>
-<div><small>標高 m</small><strong id="alt">--</strong></div>
-</div>
-<div class="row row3">
-<div><small>ヨー °/s</small><strong id="yaw">--</strong></div>
-<div><small>勾配 %</small><strong id="grd">--</strong></div>
-<div><small>カント %</small><strong id="cnt">--</strong></div>
+<div class="scol">
+<div class="row row2">
+<div class="ax"><div><small>左右 G</small><strong id="gx">0.00</strong></div><div class="mm" aria-label="左右の最大"><span id="gxp">+0.00</span><span id="gxn">-0.00</span></div></div>
+<div class="ax"><div><small>前後 G</small><strong id="gy">0.00</strong></div><div class="mm" aria-label="前後の最大"><span id="gyp">+0.00</span><span id="gyn">-0.00</span></div></div>
 </div>
 <p id="lapm" class="lapm" role="status" hidden></p>
 <p id="orb" class="orb" role="status" hidden></p>
 <p id="scl" class="mcap" hidden></p>
 <p id="adv" class="mcap adv-live" hidden></p>
-<div class="btns">
+<div class="btns main">
 <button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
+</div>
+<details id="dt"><summary><span>最大 <b id="pks">0.00</b> G</span><span class="dtl">詳細</span></summary>
+<div class="row">
+<div><small>合成 G</small><strong id="mag">0.00</strong></div>
+<div><small>最大G</small><strong id="pk">0.00</strong></div>
+<div><small>km/h</small><strong id="sp">--</strong></div>
+<div><small>標高 m</small><strong id="alt">--</strong></div>
+</div>
+<div class="row">
+<div class="ax"><div><small>上下</small><strong id="gz">0.00</strong></div><div class="mm" aria-label="上下の最大"><span id="gzp">+0.00</span><span id="gzn">-0.00</span></div></div>
+<div><small>ヨー °/s</small><strong id="yaw">--</strong></div>
+<div><small>勾配 %</small><strong id="grd">--</strong></div>
+<div><small>カント %</small><strong id="cnt">--</strong></div>
+</div>
+<div class="row row2s">
+<div><small>ピッチ °/s（上＋）</small><strong id="prt">--</strong></div>
+<div><small>ロール °/s（右下＋）</small><strong id="rrt">--</strong></div>
+</div>
+<div class="btns">
+<button id="cal">0点合わせ</button><button id="rst">最大値を消す</button>
 <button id="cam">カメラ</button>
 <button id="vdl" hidden>動画を保存</button>
 </div>
-<div class="cap" aria-label="ログの空き容量"><div class="caph"><span>ログの空き容量</span><b id="capt">確認中…</b></div><div class="capbar"><i id="capf"></i></div><small id="capd"></small></div>
+</details>
+</div>
 </section>
 <section id="pt" hidden>
-<div class="lapbig"><small id="lpn">コースがありません</small><b id="lpt">--:--.--</b><span id="lpd"></span><span id="lps" class="lps"></span></div>
-<div class="row"><div><small>前回</small><strong id="lpl">--</strong></div><div><small>ベスト</small><strong id="lpb">--</strong></div><div><small>周回</small><strong id="lpc">0</strong></div><div><small>km/h</small><strong id="lpsp">--</strong></div></div>
-<p class="mcap" id="lptb"></p>
+<div class="lcol">
+<div class="hud"><button id="lpcn" class="lnk">コースなし ▾</button><span><b id="lpsp">--</b> km/h</span><span id="lpn"></span></div>
+<div class="lapbig"><b id="lpt">--:--.--</b><span id="lpd" class="ldl"></span></div>
+<div id="lps" class="lsec" aria-label="セクション"></div>
+<div class="row row2 lr2">
+<div><small>ベスト</small><strong id="lpb">--</strong></div>
+<div><small>理論ベスト</small><strong id="lptb">--</strong></div>
+</div>
+</div>
+<div class="lcol">
+<div id="lmap" aria-label="ラップの地図"></div>
+<div class="btns"><button id="lmfol">現在地</button><button id="lmall">コース全体</button></div>
+</div>
+<details id="ldl" class="fold"><summary><span>ラップ一覧（<b id="lpc">0</b>）　前回 <b id="lpl">--</b></span><span class="dtl"></span></summary>
 <ol id="lpls" class="laps"></ol>
 <div class="btns"><button id="lprs">ラップを消す</button></div>
-<div id="lmap" aria-label="ラップの地図"></div>
-<p class="mcap">青の丸＝現在地　線＝今回の走行　黒と白の線＝スタート／ゴール（緑と白＝区間のスタート）　ピンチで拡大・縮小</p>
-<div class="btns"><button id="lmfol">現在地</button><button id="lmall">コース全体</button></div>
+</details>
+<details id="lcs" class="fold"><summary><span>コース設定</span><span class="dtl"></span></summary>
+<p class="mcap">地図：青の丸＝現在地　線＝今回の走行　黒と白の線＝スタート／ゴール（緑と白＝区間のスタート）　ピンチで拡大・縮小</p>
 <h2>コース（スタート／ゴールライン）</h2>
 <p class="mcap" id="lpst"></p>
 <div class="set"><span>使うコース</span><select id="trsel" aria-label="使うコース"></select></div>
@@ -241,16 +326,23 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>ラインの幅 <b><span id="trwv">30</span> m</b></span><input type="range" id="trw" min="10" max="80" step="5" aria-label="ラインの幅"></div>
 <div class="set"><span>ラップタイムを読み上げる</span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
 <p class="mcap">「地図で新しく作る」では、地図をタップしてスタートとゴールの線を置けます（周回と、スタートとゴールが別の区間を選べます）。「今いる場所を…」は、走りながら、スタート／ゴールにしたい場所を通過する瞬間に押すと、そこを進む向きに垂直なラインとして登録し、その瞬間からラップ1を計ります。ログ再生画面の「ラップ」からも、再生位置をラインにできます。iPhoneのGPSは1秒に1回程度なので、通過した時刻は前後の位置から補間して求めます（ずれの目安 ±0.1〜0.3秒）。</p>
+</details>
 </section>
 <section id="pl" hidden>
+<div class="seg" id="lseg" role="tablist"><button data-v="live">ライブ</button><button data-v="saved">保存したログ</button></div>
+<div id="plv" hidden>
+<div class="chips" aria-label="グラフに出す項目"></div>
 <canvas id="g" aria-label="Gのグラフ"></canvas>
 <div id="mp" aria-label="走行マップ"></div>
 <p class="mcap">緑の丸＝開始　赤の丸＝オービス　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="mfol">現在地</button><button id="mall">全体表示</button><button id="clr">軌跡を消す</button></div>
-<h2>保存したログ</h2>
-<p class="note">⚠ このサイトを7日以上開かない場合、保存したログが消えることがあります。大事なログは「CSV」で書き出しておいてください。</p>
-<div class="btns" style="margin:0 0 6px"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
+</div>
+<div id="pls">
 <ul id="list"></ul>
+<div class="btns" style="margin:10px 0 0"><button id="imp">CSVを読み込む</button><input type="file" id="impf" accept=".csv,text/csv,text/plain" hidden></div>
+<div class="cap" aria-label="ログの空き容量"><div class="caph"><span>ログの空き容量</span><b id="capt">確認中…</b></div><div class="capbar"><i id="capf"></i></div><small id="capd"></small></div>
+<p class="note" style="margin-top:10px">⚠ このサイトを7日以上開かない場合、保存したログが消えることがあります。大事なログは「⋯」→「CSV」で書き出しておいてください。</p>
+</div>
 </section>
 <p id="msg">「開始」を押すと、センサーとGPSが動き出し、傾きや加減速でボールが動きます。</p>
 </main>
@@ -263,6 +355,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <input type="range" id="vk" min="0" max="0" value="0" step="1" aria-label="再生位置">
 <p class="mcap" id="vvst"></p>
 <div class="set" id="vadjw" hidden><span>動画のずれ調整 <b><span id="vadjv">0.0</span> 秒</b></span><input type="range" id="vadj" min="-5" max="5" step="0.1" value="0" aria-label="動画のずれ調整"></div>
+<div class="chips" aria-label="グラフに出す項目"></div>
 <canvas id="vg" aria-label="ログのグラフ"></canvas>
 <p class="mcap" id="vgz">ピンチで拡大・縮小　タップでカーソル移動</p>
 <div class="btns"><button id="vgall" hidden>グラフを全体表示</button></div>
@@ -303,8 +396,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set"><span>勾配補正 <small>坂道やカント（路面の横の傾き）で出るGを、GPSの車速とジャイロから推定して差し引く</small></span><input type="checkbox" id="slp" aria-label="勾配補正"></div>
-<p class="mcap" id="slpst">勾配は「上り＋」、カントは「右下がり＋」です。推定は10km/h以上で一定に走っているときと、止まっているときに進み、数秒かけて追いつきます。</p>
+<p class="mcap" id="slpst">勾配は「上り＋」、カントは「右下がり＋」です。傾きの変化はジャイロですぐに追い、GPSの車速・ヨーレートとの差でゆっくり直します。GPSが途切れている間は直前の値を保ちます。</p>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
+<div class="set"><span>ヨーレートのLPF <b><span id="yfcv">2</span> Hz</b></span><input type="range" id="yfc" min="0.5" max="10" step="0.5" aria-label="ヨーレートのカットオフ周波数"></div>
 <div class="set"><span>制限速度の接続テスト</span><button id="ltest">テスト</button></div>
 <p class="mcap" id="limst"></p>
 <p class="mcap">制限の欄：「…」取得中　「×」取得エラー　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
@@ -321,7 +415,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.27.1',APP_DATE='2026-11-11';
+const APP_VERSION='2.0.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -329,9 +423,10 @@ const camc=$('camc'),camcx=camc.getContext('2d');
 let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,v:4};
+const GP=[['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
+let cfg={gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
-try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
+try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);cfg.yfc=Math.min(10,Math.max(.5,+cfg.yfc||2));if(!Array.isArray(cfg.gp))cfg.gp=['x','y','rot','sp'];cfg.gp=cfg.gp.filter(k=>GP.some(p=>p[0]===k));if(!cfg.gp.length)cfg.gp=['x','y','rot','sp'];if(cfg.lv!=='live')cfg.lv='saved';saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let axMax={xp:0,xn:0,yp:0,yn:0,zp:0,zn:0},raw={x:0,y:0,z:0},gf=null,basis=null,calN=0,sg={x:0,y:0,z:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
@@ -344,13 +439,24 @@ try{localStorage.removeItem('gm-camc')}catch(e){}   // 向きの情報がない�
 let spdLim=null,lastQ=null,limBusy=false,overState=false,lastAlert=0,overCount=0,roads=null,curId=null,near=null,quickBusy=false,lastHdg=null,limFails=0,recent=[],lastVal=null,valBusy=false,roadNoData=false,limStat={t:null,n:0,err:''};
 const msg=t=>{$('msg').textContent=t};
 function fit(c,h){const w=c.clientWidth;if(!w)return;const d=devicePixelRatio||1;c.width=Math.round(w*d);c.height=Math.round((h||w)*d);c.getContext('2d').setTransform(d,0,0,d,0,0)}
-function size(){fit(cv);fit(gc,686);fit(vc);fit(vg,686);fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
+const gpSel=()=>GP.map(p=>p[0]).filter(k=>cfg.gp.includes(k)),gH=()=>84*gpSel().length+14;
+function size(){fit(cv);fit(gc,gH());fit(vc);fit(vg,gH());fit(camc);if(LM)LM.map.invalidateSize();if(VM)VM.map.invalidateSize()}
 let LM=null,VM=null;
-addEventListener('resize',size);size();
+addEventListener('resize',size);
+function gpUi(){   // グラフに出す項目の札（ライブと再生で共通）
+  document.querySelectorAll('.chips').forEach(el=>{el.innerHTML=GP.map(([k,l])=>'<button data-k="'+k+'"'+(cfg.gp.includes(k)?' class="on" aria-pressed="true"':' aria-pressed="false"')+'>'+l+'</button>').join('')});
+  gc.style.height=vg.style.height=gH()+'px';size();
+}
+document.querySelectorAll('.chips').forEach(el=>el.onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;const k=b.dataset.k,i=cfg.gp.indexOf(k);
+  if(i>=0){if(cfg.gp.length<2)return;cfg.gp.splice(i,1)}else cfg.gp.push(k);
+  saveCfg();gpUi();
+});
+gpUi();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   $('pm').hidden=b.dataset.t!=='m';$('pl').hidden=b.dataset.t!=='l';$('pt').hidden=b.dataset.t!=='t';if(b.dataset.t==='t'){renderTrackUi();lapMap()}
-  if(b.dataset.t==='l')liveMap();else if(logsReady)showCap();
+  if(b.dataset.t==='l'){lsegShow();if(logsReady)showCap()}
   size();
 });
 // settings
@@ -377,7 +483,7 @@ const doUpdate=()=>{
 $('updb').onclick=doUpdate;$('updn').onclick=doUpdate;
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-updT>600000)checkUpdate(false)});
 if(location.protocol.startsWith('http'))setTimeout(()=>checkUpdate(false),1500);
-$('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('slp').checked=!!cfg.slope;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
+$('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('slp').checked=!!cfg.slope;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;$('yfc').value=cfg.yfc;$('yfcv').textContent=cfg.yfc;
 $('gear').onclick=()=>{
   showLimStat();showOrbStat();showStor();
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
@@ -425,6 +531,7 @@ function mirror(mx,my){
   env=ne;
 }
 $('fc').oninput=e=>{cfg.fc=+e.target.value;$('fcv').textContent=cfg.fc;saveCfg()};
+$('yfc').oninput=e=>{cfg.yfc=+e.target.value;$('yfcv').textContent=cfg.yfc;saveCfg()};
 // sensor
 // 3軸センサー: 端末ごとの符号の違い（iPhoneは逆向き）をそろえ、重力に対して上向きを＋とする向きで扱う
 function onMotion(e){
@@ -433,7 +540,14 @@ function onMotion(e){
   const sg_=ios?-1:1;
   raw.x=sg_*a.x/9.81;raw.y=sg_*a.y/9.81;raw.z=sg_*(a.z||0)/9.81;
   const rr=e.rotationRate;   // ジャイロ（°/s）。「上」の向きのまわりの回転＝ヨーレート（反時計回り＝左旋回が＋）
-  if(rr&&rr.alpha!=null&&basis){const u=basis.u;yawRaw=(rr.beta||0)*u.x+(rr.gamma||0)*u.y+rr.alpha*u.z}
+  if(rr&&rr.alpha!=null&&basis){
+    const B=basis,wx=rr.beta||0,wy=rr.gamma||0,wz=rr.alpha,u=B.u;yawRaw=wx*u.x+wy*u.y+wz*u.z;
+    const t=performance.now(),dt=Math.min(Math.max((t-gyT)/1000,.001),.1);gyT=t;   // ヨーレートのローパス（1次を2段。2段で設定のカットオフになるよう1段ぶんを1.554倍にする）
+    const pe=wx*B.ex.x+wy*B.ex.y+wz*B.ex.z,rf=wx*B.fw.x+wy*B.fw.y+wz*B.fw.z;   // スマホの右まわり（ピッチ）・前まわり（ロール）の角速度
+    if(yawF==null){yawF1=yawF=yawRaw;pitF1=pitF=pe;rolF1=rolF=rf}
+    else{const al=dt/(1/(2*Math.PI*cfg.yfc*1.554)+dt);yawF1+=(yawRaw-yawF1)*al;yawF+=(yawF1-yawF)*al;pitF1+=(pe-pitF1)*al;pitF+=(pitF1-pitF)*al;rolF1+=(rf-rolF1)*al;rolF+=(rolF1-rolF)*al}
+    gyA.ex+=pe;gyA.fw+=rf;gyA.u+=yawRaw;gyA.n++;   // 勾配補正用（ピッチ・ロール・ヨーの角速度）
+  }
   if(!gf)gf={x:raw.x,y:raw.y,z:raw.z};else{gf.x+=(raw.x-gf.x)*.05;gf.y+=(raw.y-gf.y)*.05;gf.z+=(raw.z-gf.z)*.05}   // 約0.3秒の平均（0点合わせ用）
   if(!sensor){sensor=true;calN=0}
   if(++calN===45)autoCal();   // 開始から約0.7秒後に置き方を確認
@@ -488,7 +602,7 @@ async function start(){
   }catch(e){msg('センサーを開始できませんでした。');return false}
 }
 function setRun(on){running=on;const b=$('start');b.textContent=on?'停止':'開始';b.classList.toggle('p',!on);b.classList.toggle('on',on)}
-function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
+function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;yawRaw=yawF=yawF1=pitF=pitF1=rolF=rolF1=null;gyA.ex=gyA.fw=gyA.u=gyA.n=0;gyA.l=[0,0,0];try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
 if(cfg.g0)basis=makeBasis(cfg.g0);
 $('start').onclick=async()=>{
   if(running){stopAll();return}
@@ -546,7 +660,7 @@ async function showCap(){
   f.style.width=Math.max(pct,used>0?1:0).toFixed(1)+'%';f.style.background=pct>90?css('--peak'):'';
   $('capd').textContent='使用 '+fmtMB(used)+' ／ 上限 '+fmtMB(quota)+'　保存したログ '+saved.length+'件';
 }
-setInterval(()=>{if(logsReady&&!$('pm').hidden)showCap()},15000);
+setInterval(()=>{if(logsReady&&!$('pl').hidden)showCap()},15000);
 async function showStor(){
   const el=$('stor');if(!el)return;
   let t='保存したログ：'+saved.length+'件（'+(dbOk?'データベースに保存':'簡易保存・約5MBまで')+'）';
@@ -555,7 +669,7 @@ async function showStor(){
 }
 function saveLog(sc,vm){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
-  const D=[1,3,3,3,1,6,6,3,1,1,1,1,3,3],rows=log.map(r=>r.map((v,k)=>q(v,D[k]??3)));   // すべての列を保存（桁を丸める）
+  const D=[1,3,3,3,1,6,6,3,1,1,1,1,3,3,1,1],rows=log.map(r=>r.map((v,k)=>q(v,D[k]??3)));   // すべての列を保存（桁を丸める）
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
   addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()},vm).then(r=>{
   if(!r.ok)exportCsv(r.L);
@@ -570,7 +684,7 @@ function addLog(rows,name,sc,pen,vm){
 }
 function exportCsv(L){
   const f=v=>v==null?'':v;
-  const t='秒,左右G(左+),前後G(加速+),合成G,km/h,緯度,経度,上下G,標高m,ヨーレート°/s(左+),勾配%(上り+),カント%(右下がり+),補正前左右G(左+),補正前前後G(加速+)\n'+L.rows.map(r=>{const a=r.slice(0,14);while(a.length<14)a.push(null);[2,13].forEach(k=>{if(a[k]!=null)a[k]=-a[k]});return a.map(f).join(',')}).join('\n');
+  const t='秒,左右G(左+),前後G(加速+),合成G,km/h,緯度,経度,上下G,標高m,ヨーレート°/s(左+),勾配%(上り+),カント%(右下がり+),補正前左右G(左+),補正前前後G(加速+),ピッチレート°/s(上+),ロールレート°/s(右下がり+)\n'+L.rows.map(r=>{const a=r.slice(0,16);while(a.length<16)a.push(null);[2,13].forEach(k=>{if(a[k]!=null)a[k]=-a[k]});return a.map(f).join(',')}).join('\n');
   const d=new Date(L.id),p2=n=>String(n).padStart(2,'0');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));
@@ -585,7 +699,7 @@ function parseCsv(t){
     const c=l.trim().split(',');if(c.length<3)return;
     const tt=n(c[0]),x=n(c[1]),y=n(c[2]);if(tt==null||x==null||y==null)return;
     const m=n(c[3]);
-    rows.push([tt,x,ng(y),m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8]),n(c[9]),n(c[10]),n(c[11]),n(c[12]),ng(n(c[13]))]);
+    rows.push([tt,x,ng(y),m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8]),n(c[9]),n(c[10]),n(c[11]),n(c[12]),ng(n(c[13])),n(c[14]),n(c[15])]);
   });
   return rows;
 }
@@ -608,17 +722,41 @@ $('rec').onclick=()=>{
   }else msg('記録を破棄しました。');
 };
 function logScore(s){try{if(s.score===undefined||(s.score&&s.score.ph===undefined))s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
+const esc=t=>String(t).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const fmtDur=t=>t>=3600?Math.floor(t/3600)+'時間'+Math.floor(t%3600/60)+'分':t>=60?Math.floor(t/60)+'分'+String(t%60).padStart(2,'0')+'秒':t+'秒';
+const thumbs=new Map();
+function thumb(L){   // 一覧に出す、走った軌跡の小さな図
+  if(thumbs.has(L.id))return thumbs.get(L.id);
+  const P=[],st=Math.max(1,Math.floor(L.rows.length/80));let g='<circle cx="22" cy="22" r="3" fill="var(--ring)"/>';
+  for(let i=0;i<L.rows.length;i+=st){const r=L.rows[i];if(r[5]!=null&&r[6]!=null)P.push([r[6],r[5]])}
+  if(P.length>1){
+    const k=Math.cos(P[0][1]*Math.PI/180);let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+    P.forEach(p=>{p[0]*=k;x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])});
+    const sc=34/Math.max(x1-x0,y1-y0,1e-7),ox=(44-(x1-x0)*sc)/2,oy=(44-(y1-y0)*sc)/2;
+    g='<polyline fill="none" stroke="var(--ball)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="'+P.map(p=>(ox+(p[0]-x0)*sc).toFixed(1)+','+(44-oy-(p[1]-y0)*sc).toFixed(1)).join(' ')+'"/>';
+  }
+  const h='<svg class="th" viewBox="0 0 44 44" aria-hidden="true">'+g+'</svg>';thumbs.set(L.id,h);return h;
+}
 function renderList(){
   if(!logsReady){$('list').innerHTML='<li><small>ログを読み込み中…</small></li>';return}
-  $('list').innerHTML=saved.length?saved.map(s=>'<li><div><b>'+s.name+'</b><small>'+s.dur+'秒　最大'+s.peak+'G'+(s.gps?'　GPSあり':'')+(s.vid?'　動画あり':'')+(logScore(s)?'　スコア '+s.score.total+'点':'')+'</small></div><div class="btns" style="margin:0"><button data-a="p" data-id="'+s.id+'">再生</button><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。</small></li>';
+  $('list').innerHTML=saved.length?saved.map(s=>'<li class="lg"><button class="lgo" data-a="p" data-id="'+s.id+'">'+thumb(s)+'<div><b>'+esc(s.name)+'</b><small>'+fmtDur(s.dur)+'・最大 '+s.peak+' G'+(s.vid?'・動画あり':'')+'</small></div>'+(logScore(s)?'<span class="lgs"><b>'+s.score.total+'</b><small>点</small></span>':'<span></span>')+'</button><button class="lgm" data-a="m" data-id="'+s.id+'" aria-label="'+esc(s.name)+' のメニュー">⋯</button><div class="lgx" hidden><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="n" data-id="'+s.id+'">名前を変える</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。メーターの「記録開始」で記録できます。</small></li>';
 }
 $('list').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
   const L=saved.find(s=>s.id==b.dataset.id);if(!L)return;
-  if(b.dataset.a==='p')openL(L);
-  else if(b.dataset.a==='c')exportCsv(L);
-  else if(confirm('このログを削除しますか？')){saved=saved.filter(s=>s!==L);delLog(L.id).then(showCap);renderList()}
+  const a=b.dataset.a;
+  if(a==='p')openL(L);
+  else if(a==='m'){const x=b.closest('li').querySelector('.lgx');x.hidden=!x.hidden}
+  else if(a==='c')exportCsv(L);
+  else if(a==='n'){const nm=prompt('ログの名前',L.name);if(nm&&nm.trim()){L.name=nm.trim().slice(0,40);putLog(L);renderList()}}
+  else if(confirm('このログを削除しますか？')){saved=saved.filter(s=>s!==L);thumbs.delete(L.id);delLog(L.id).then(showCap);renderList()}
 };
+function lsegShow(){   // ログのタブ: 「ライブ」と「保存したログ」の切り替え
+  const live=cfg.lv==='live';$('plv').hidden=!live;$('pls').hidden=live;
+  document.querySelectorAll('#lseg button').forEach(x=>{const on=x.dataset.v===cfg.lv;x.classList.toggle('on',on);x.setAttribute('aria-selected',on)});
+  if(live){liveMap();size()}
+}
+$('lseg').onclick=e=>{const b=e.target.closest('button');if(!b)return;cfg.lv=b.dataset.v;saveCfg();lsegShow()};
 loadLogs();
 $('imp').onclick=()=>$('impf').click();
 $('impf').onchange=async e=>{
@@ -978,7 +1116,7 @@ const fmtSec=v=>v>=60?fmtLap(v):v.toFixed(2);
 function renderLapList(){
   const el=$('lpls');if(!el)return;
   el.innerHTML=LP.laps.slice().reverse().map(l=>'<li'+(l.time===LP.best?' class="best"':'')+'><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===LP.best?'ベスト':fmtDelta(l.time-LP.best))+'</small>'+secRow(l.secs,LP.bestSec)+'</li>').join('');
-  const tb=theoBest(LP.bestSec);$('lptb').textContent=tb!=null&&LP.laps.length>1?'理論ベスト（各セクションのベストの合計） '+fmtLap(tb):'';
+  const tb=theoBest(LP.bestSec);$('lptb').textContent=tb!=null&&LP.laps.length>1?fmtLap(tb):'--';
   $('lpl').textContent=LP.laps.length?fmtLap(LP.laps[LP.laps.length-1].time):'--';
   $('lpb').textContent=LP.best==null?'--':fmtLap(LP.best);
   $('lpc').textContent=LP.laps.length;
@@ -987,11 +1125,15 @@ function lapTick(){   // 画面の更新（毎フレーム）
   const T=LP.T,on=!!T&&running;
   const el=LP.start!=null?performance.now()/1000-LP.start:null,dc=LP.delta==null?'':(LP.delta>0?'#dc2626':'#16a34a');
   if(!$('pt').hidden){
-    $('lpn').textContent=T?(LP.start==null?'スタート／ゴールの通過待ち':'ラップ '+(LP.laps.length+1)):'コースがありません';
+    $('lpcn').textContent=(T?T.name:'コースなし')+' ▾';$('lpn').textContent=T?(LP.start==null?'通過待ち':'ラップ '+(LP.laps.length+1)):'';
     $('lpt').textContent=el==null?'--:--.--':fmtLap(el);
-    const d=$('lpd');d.textContent=LP.delta==null?'':'ベストとの差 '+fmtDelta(LP.delta);d.style.color=dc;
-    const S=LP.secMsg&&performance.now()<LP.secMsg.until?LP.secMsg:null,NS=T&&T.sec?T.sec.length:0,ls=$('lps');
-    ls.innerHTML=S?'S'+(S.k+1)+'　'+(S.v==null?'--':fmtSec(S.v))+(S.d==null?'':'　<b style="color:'+(S.d>0?'#dc2626':S.d<0?'#16a34a':'#8b5cf6')+'">'+fmtDelta(S.d)+'</b>'):NS&&LP.start!=null?'セクション '+Math.min(LP.si+1,NS+1)+' / '+(NS+1):'';
+    const d=$('lpd');d.textContent=LP.delta==null?'':fmtDelta(LP.delta);d.className='ldl'+(LP.delta==null?'':LP.delta>0?' slow':' fast');
+    const NS=T&&T.sec?T.sec.length:0,ls=$('lps');let h='';   // セクションの札: 通過ずみ＝ベストとの差（速い＝緑、遅い＝赤、初回＝タイム）、枠だけ＝走行中
+    if(NS&&LP.start!=null)for(let k=0;k<=NS;k++){
+      const sp=LP.splits,done=k<sp.length&&sp[k]!=null,v=done?sp[k]-(k?sp[k-1]:0):null,bs=LP.bestSec[k],dd=done&&bs!=null&&isFinite(v)?v-bs:null;
+      h+='<span class="'+(done?(dd==null?'done':dd>0?'slow':'fast'):k===LP.si?'cur':'')+'">S'+(k+1)+(done?' '+(dd==null?(isFinite(v)?fmtSec(v):'--'):fmtDelta(dd)):k===LP.si?' 走行中':'')+'</span>';
+    }
+    if(h!==ls._h){ls.innerHTML=h;ls._h=h}
     $('lpsp').textContent=gps.sp==null?'--':Math.round(gps.sp);
   }
   const m=$('lapm');m.hidden=!on;
@@ -1018,6 +1160,7 @@ function renderTrackUi(){
   const T=LP.T||(cfg.trackId?tracks.find(t=>t.id===cfg.trackId):null);
   $('lpst').textContent=!tracks.length?'まだコースがありません。走りながら、スタート／ゴールにしたい場所を通過する瞬間に「今いる場所をスタート／ゴールにする」を押してください。'
     :T?'使用中：'+T.name+'（'+(T.type==='sprint'&&T.f?'区間：スタートとゴールが別':'周回')+'・ラインの幅 '+T.w+'m）':'近く（3km以内）に登録したコースがありません。';
+  if(!tracks.length)$('lcs').open=true;
   $('trren').disabled=$('trdel').disabled=$('tredit').disabled=!T;$('trw').disabled=!T;
   if(T){$('trw').value=T.w;$('trwv').textContent=T.w}
 }
@@ -1037,6 +1180,7 @@ $('trren').onclick=()=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T)r
 $('trdel').onclick=()=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T||!confirm('「'+T.name+'」を削除しますか？'))return;tracks=tracks.filter(t=>t!==T);saveTracks();if(cfg.trackId===T.id){cfg.trackId=null;saveCfg()}LP.T=null;lapReset();renderTrackUi()};
 $('trw').oninput=e=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T)return;T.w=+e.target.value;$('trwv').textContent=T.w;saveTracks();drawSF()};
 cfg.lapVoice=cfg.lapVoice!==false;$('lapv').checked=cfg.lapVoice;$('lapv').onchange=e=>{cfg.lapVoice=e.target.checked;saveCfg()};
+$('lpcn').onclick=()=>{const d=$('lcs');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})};
 $('lprs').onclick=()=>{if(LP.laps.length&&!confirm('このセッションのラップを消しますか？'))return;const keep=LP.start;lapReset();LP.start=keep;LP.prev=null};
 // 地図でコースを作る・直す: タップした場所に線を置き、向きは近くの走行記録の進む向きに合わせる
 let ED=null,TM=null;
@@ -1168,7 +1312,7 @@ function lapSeries(rows,D,lap){   // 5mごとに、経過時間・車速・G・�
     const dd=lap.d0+s;while(k<idx.length-2&&D[idx[k+1]]<dd)k++;
     const i=idx[k],j=idx[k+1],di=D[i],dj=D[j],f=dj>di?Math.min(1,Math.max(0,(dd-di)/(dj-di))):0,a=rows[i],b=rows[j];
     const mix=(p,q)=>p==null?q:q==null?p:p+(q-p)*f;
-    o.d.push(s);o.t.push(mix(a[0],b[0])-lap.t0);o.sp.push(mix(a[4],b[4]));o.x.push(mix(a[1],b[1]));o.y.push(-mix(a[2],b[2]));   // 表示は加速が＋o.ri.push(f<.5?i:j);
+    o.d.push(s);o.t.push(mix(a[0],b[0])-lap.t0);o.sp.push(mix(a[4],b[4]));o.x.push(mix(a[1],b[1]));o.y.push(-mix(a[2],b[2]));o.ri.push(f<.5?i:j);   // 表示は加速が＋
     if(a[5]!=null)o.ll.push([a[5],a[6]]);
   }
   return o;
@@ -1542,8 +1686,15 @@ const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim
 function envAdd(en,x,y,m){const a=Math.atan2(y,x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>en[i])en[i]=v}}
 function drawBall(cvs,c,sc){
   const w=cvs.clientWidth;if(!w)return;
-  const R=w/2,k=R*.94,S=sc.S,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
+  const H=sc.hud,R=w/2,k=R*(H?.88:.94),S=sc.S,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
   c.clearRect(0,0,w,w);
+  if(H&&H.tilt){   // 姿勢: 地面側をうすく塗る。水平線の上下＝勾配（上りで下がる）、傾き＝カント（右下がりで右が上がる）。見やすいよう角度は4倍に強調
+    const a=Math.max(-.6,Math.min(.6,Math.atan(H.ca/100)*4)),dy=Math.max(-.7,Math.min(.7,H.gr/15))*k;
+    c.save();c.beginPath();c.arc(R,R,k,0,7);c.clip();c.translate(R,R+dy);c.rotate(-a);
+    c.globalAlpha=.16;c.fillStyle='#3b82f6';c.fillRect(-2*w,0,4*w,2*w);
+    c.globalAlpha=.9;c.strokeStyle='#3b82f6';c.lineWidth=2;c.beginPath();c.moveTo(-2*w,0);c.lineTo(2*w,0);c.stroke();
+    c.restore();c.globalAlpha=1;
+  }
   c.strokeStyle=ring;c.lineWidth=1.4;c.globalAlpha=.55;
   for(let i=1;i<=4;i++){c.beginPath();c.arc(R,R,k*i/4,0,7);c.stroke()}
   c.beginPath();c.moveTo(R,R*.06);c.lineTo(R,w-R*.06);c.moveTo(R*.06,R);c.lineTo(w-R*.06,R);c.stroke();
@@ -1561,10 +1712,29 @@ function drawBall(cvs,c,sc){
   let bx=sc.x/S,by=sc.y/S,l=Math.hypot(bx,by);
   if(l>1){bx/=l;by/=l}
   c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,R*.07,0,7);c.fill();
+  if(H){
+    const mut=css('--mut'),kr=R*.94,f=Math.max(.7,Math.min(1.3,w/360));
+    // ヨーレート: 外周の弧（真上が0、左旋回で左へ伸びる。30°/sで60°ぶん）
+    c.strokeStyle=ring;c.lineWidth=2;c.beginPath();c.moveTo(R,R-kr-6);c.lineTo(R,R-kr+6);c.stroke();
+    if(H.yaw!=null&&Math.abs(H.yaw)>=.5){
+      const a=Math.max(-1,Math.min(1,H.yaw/30))*Math.PI/3;
+      c.strokeStyle='#f59e0b';c.lineWidth=7;c.lineCap='round';c.beginPath();c.arc(R,R,kr,-Math.PI/2,-Math.PI/2-a,a>0);c.stroke();c.lineCap='butt';
+    }
+    c.font='700 '+Math.round(34*f)+'px system-ui';c.textBaseline='top';
+    c.textAlign='left';c.fillStyle=H.over?pc:ring;c.fillText(H.sp==null?'--':Math.round(H.sp),8,6);
+    c.textAlign='right';c.fillStyle=ring;c.fillText(H.m.toFixed(2),w-8,6);
+    c.font=Math.round(12*f)+'px system-ui';c.fillStyle=mut;
+    c.textAlign='left';c.fillText('km/h',10,8+36*f);c.textAlign='right';c.fillText('G',w-10,8+36*f);
+    c.textBaseline='alphabetic';c.font=Math.round(13*f)+'px system-ui';
+    const sgn=(v,d)=>(v>0?'+':'')+v.toFixed(d);
+    c.textAlign='left';c.fillText('勾配 '+(H.tilt?sgn(H.gr,1)+'%':'--'),8,w-8);
+    c.textAlign='right';c.fillText('カント '+(H.tilt?sgn(H.ca,1)+'%':'--'),w-8,w-8);
+    c.textAlign='center';c.fillText('ヨー '+(H.yaw==null?'--':sgn(Math.abs(H.yaw)<.5?0:H.yaw,0)+'°/s'),R,w-8);
+  }
 }
 // ログのグラフ: 左右G / 前後G / 車速 / 減点 の4段
 function drawPanels(c,w,pts,full,cur,win){
-  const H=84,TS=14,NP=8,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak'),bg=css('--panel');
+  const H=84,TS=14,sel=gpSel(),NP=sel.length,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak'),bg=css('--panel');
   c.clearRect(0,0,w,H*NP+TS);
   if(!n)return;
   const za=full&&win?win.a:0,zb=full&&win?win.b:Math.max(n-1,1);   // 表示する範囲（拡大中はその一部）
@@ -1587,8 +1757,8 @@ function drawPanels(c,w,pts,full,cur,win){
   let yl=[];
   const grid=(y,lab,dash)=>{c.strokeStyle=ring;c.lineWidth=1;if(dash)c.setLineDash([3,3]);c.beginPath();c.moveTo(0,Math.round(y)+.5);c.lineTo(w,Math.round(y)+.5);c.stroke();c.setLineDash([]);yl.push([y,lab])};
   const halo=(t,x,y)=>{c.lineWidth=3;c.strokeStyle=bg;c.strokeText(t,x,y);c.fillText(t,x,y)};
-  const panel=(k,label,val,draw)=>{
-    const top=k*H;c.save();c.beginPath();c.rect(0,top,w,H);c.clip();yl=[];
+  const panel=(key,label,val,draw)=>{
+    const k=sel.indexOf(key);if(k<0)return;const top=k*H;c.save();c.beginPath();c.rect(0,top,w,H);c.clip();yl=[];
     c.strokeStyle=ring;c.lineWidth=1;c.globalAlpha=.55;
     ticks.forEach(t=>{const X=Math.round(t.x)+.5;c.beginPath();c.moveTo(X,top+15);c.lineTo(X,top+H);c.stroke()});
     c.globalAlpha=1;
@@ -1611,31 +1781,34 @@ function drawPanels(c,w,pts,full,cur,win){
     [r,r/2,0,-r/2,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+(+v.toFixed(2)),v===0));
     line(key,mid,sc);
   });
-  gPanel(0,'x',(full?'':'過去30秒　')+'左右G（左旋回＋）',rx);
-  gPanel(1,'y','前後G（加速＋）',ry);
-  gPanel(2,'z','上下G',rz);
-  let yr=0,sr=0;pts.forEach(p=>{if(p.yaw!=null)yr=Math.max(yr,Math.abs(p.yaw));if(p.gr!=null)sr=Math.max(sr,Math.abs(p.gr));if(p.ca!=null)sr=Math.max(sr,Math.abs(p.ca))});
+  gPanel('x','x',(full?'':'過去30秒　')+'左右G（左旋回＋）',rx);
+  gPanel('y','y','前後G（加速＋）',ry);
+  gPanel('z','z','上下G',rz);
+  let yr=0,sr=0;pts.forEach(p=>{if(p.yaw!=null)yr=Math.max(yr,Math.abs(p.yaw));if(p.pr!=null)yr=Math.max(yr,Math.abs(p.pr));if(p.rr!=null)yr=Math.max(yr,Math.abs(p.rr));if(p.gr!=null)sr=Math.max(sr,Math.abs(p.gr));if(p.ca!=null)sr=Math.max(sr,Math.abs(p.ca))});
   const ryaw=[10,20,45,90,180].find(r=>r>=yr*1.1)||360,rsl=[5,10,20,40].find(r=>r>=sr*1.1)||60;
-  panel(3,'ヨーレート °/s（左旋回＋）',cp?(cp.yaw==null?'-- °/s':(cp.yaw>0?'+':'')+cp.yaw.toFixed(1)+' °/s'):null,top=>{
-    if(!pts.some(p=>p.yaw!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('ヨーレートのデータがありません',w/2,top+H/2+6);return}
-    const mid=top+H/2+6,sc=(H/2-12)/ryaw;[ryaw,0,-ryaw].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));line('yaw',mid,sc);
+  const RC=[['yaw','ヨー 左＋','#3b82f6'],['pr','ピッチ 上＋','#f59e0b'],['rr','ロール 右下＋','#10b981']],rv=v=>v==null?'--':(v>0?'+':'')+v.toFixed(1);
+  panel('rot','回転 °/s',cp?'Y '+rv(cp.yaw)+'  P '+rv(cp.pr)+'  R '+rv(cp.rr):null,top=>{
+    if(!pts.some(p=>p.yaw!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('回転（ジャイロ）のデータがありません',w/2,top+H/2+6);return}
+    const mid=top+H/2+6,sc=(H/2-12)/ryaw;[ryaw,0,-ryaw].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));
+    RC.slice().reverse().forEach(r=>line(r[0],mid,sc,r[2]));
+    c.font='10px system-ui';c.textAlign='left';c.lineJoin='round';let X=52;RC.forEach(r=>{c.fillStyle=r[2];halo(r[1],X,top+11);X+=c.measureText(r[1]).width+8});
   });
-  panel(4,'勾配（上り＋）／カント（右下がり＋）%',cp?(cp.gr==null?'--':'勾配 '+(cp.gr>0?'+':'')+cp.gr.toFixed(1)+'　カント '+(cp.ca>0?'+':'')+(cp.ca==null?'--':cp.ca.toFixed(1))):null,top=>{
+  panel('sl','勾配（上り＋）／カント（右下がり＋）%',cp?(cp.gr==null?'--':'勾配 '+(cp.gr>0?'+':'')+cp.gr.toFixed(1)+'　カント '+(cp.ca>0?'+':'')+(cp.ca==null?'--':cp.ca.toFixed(1))):null,top=>{
     if(!pts.some(p=>p.gr!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('勾配補正をオンにして記録すると表示します',w/2,top+H/2+6);return}
     const mid=top+H/2+6,sc=(H/2-12)/rsl;[rsl,0,-rsl].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));line('gr',mid,sc);line('ca',mid,sc,'#f59e0b');
   });
-  panel(5,'車速 km/h',cp?(cp.sp==null?'-- km/h':Math.round(cp.sp)+' km/h'):null,top=>{
+  panel('sp','車速 km/h',cp?(cp.sp==null?'-- km/h':Math.round(cp.sp)+' km/h'):null,top=>{
     const base=top+H-6,sc=(H-24)/rs;
     for(let v=0;v<=rs;v+=ss)grid(base-v*sc,String(v),false);
     line('sp',base,sc);
   });
-  panel(6,'標高 m',cp?(cp.alt==null?'-- m':Math.round(cp.alt)+' m'):null,top=>{
+  panel('alt','標高 m',cp?(cp.alt==null?'-- m':Math.round(cp.alt)+' m'):null,top=>{
     if(amin==null){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('標高のデータがありません',w/2,top+H/2+6);return}
     const sp=Math.max(1,amax-amin),st=[1,2,5,10,20,50,100,200,500,1000].find(x=>sp/x<=3)||2000,lo=Math.floor(amin/st)*st,hi=Math.max(lo+st,Math.ceil(amax/st)*st),base=top+H-6,sc=(H-24)/(hi-lo);
     for(let v=lo;v<=hi+1e-9;v+=st)grid(base-(v-lo)*sc,String(v),false);
     line('alt',base+lo*sc,sc);
   });
-  panel(7,'減点　棒＝ジャーク ▲トゲ ■＋型',cp?'ジャーク '+(cp.pj||0).toFixed(2)+(cp.ev==='spike'?' ▲':cp.ev?' ■':''):null,top=>{
+  panel('pen','減点　棒＝ジャーク ▲トゲ ■＋型',cp?'ジャーク '+(cp.pj||0).toFixed(2)+(cp.ev==='spike'?' ▲':cp.ev?' ■':''):null,top=>{
     const base=top+H-6,hh=H-36,bw=Math.max(1.5,full?w/Math.max(zb-za+1,1):w/N);
     grid(base,'0',false);grid(base-hh/2,'0.5',true);grid(base-hh,'1',false);
     c.fillStyle=pc;c.globalAlpha=.6;
@@ -1702,7 +1875,7 @@ function openL(L){
     cur.push(last);
   });
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
-  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pj:pen.pj[i]||0,ev:null}));
+  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pr:nv(r[14]),rr:nv(r[15]),pj:pen.pj[i]||0,ev:null}));
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
   vClearVid();
   V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null,z:{a:0,b:rows.length-1}};
@@ -1966,45 +2139,108 @@ function scoreHtml(sc){
     +adviceHtml(sc)
     +'<p class="mcap">路面や振動などの速い揺れ（約2Hzより速いもの）はノイズとして採点から除外しています（ノイズ量 '+sc.noise+' G/s）。評価した運転操作の時間：'+sc.act+'秒</p></div>';
 }
-// ===== 勾配補正: 本当の加速度（前後＝GPSの車速の変化、左右＝車速×ヨーレート）とセンサーの差のうち、ゆっくり変わる分を勾配・カントとみなす =====
-let yawRaw=null,sgR={x:0,y:0},maxHold=0;
-const SL={bx:0,by:0,xsg:0,ysg:0,yb:0,g:null,W:null,ok:false};
-function slReset(all){SL.bx=0;SL.by=0;SL.ok=false;SL.g=null;SL.W=null;if(all){SL.xsg=0;SL.ysg=0}}
-const slSy=()=>SL.ysg<-0.3?-1:1,slGs=()=>SL.xsg<-0.3?-1:1;   // 向きの確認（前後Gの符号・ジャイロの符号）
-function yawLeft(){return yawRaw==null?null:(yawRaw-SL.yb)*slGs()}   // 左旋回＋（°/s）
-function slStep(tx,ty,dt){
-  const sp=gps.sp;
+// ===== 勾配補正: 本当の加速度（前後＝GPSの車速の変化、左右＝車速×ヨーレート）とセンサーの差を、車の傾き（勾配・カント）とみなす =====
+// 傾きの速い変化はジャイロ（ピッチ・ロールの角速度）で毎フレーム追い、GPSとの差でゆっくり直す（カルマンフィルタ）。
+// GPSの車速はセンサーより遅れて届くので、センサーの値をためておき、遅れの分だけ前の区間と比べる（遅れは走りながら自動で合わせる）。
+// SL.a・SL.b は「0点合わせのときの上向き」がスマホの右・前へどれだけ傾いたか（sin）。左右反転・前後反転の設定とは無関係に持つ
+let yawRaw=null,yawF=null,yawF1=null,pitF=null,pitF1=null,rolF=null,rolF1=null,gyT=0,sgR={x:0,y:0},maxHold=0;
+const gyA={ex:0,fw:0,u:0,n:0,l:[0,0,0]};   // ジャイロの合計（描画フレームの間の平均をとる）と直前の平均（°/s）
+const SLT=[0,.25,.5,.75,1,1.25,1.5];   // GPSの車速の遅れの候補（秒）
+const SL={a:0,b:0,bx:0,by:0,xsg:0,ysg:0,yb:0,g:null,ok:false,h:1,hc:.5,hn:0,tj:2,E:SLT.map(()=>0),En:0};
+function slReset(all){
+  SL.a=SL.b=SL.bx=SL.by=0;SL.ok=false;SL.g=null;SL.buf=[];SL.c=[0,0,0,0,0,0,0,0,0,0];SL.Ga=SL.Gb=0;SL.ba=SL.bb=0;
+  SL.Pa=[.01,0,2.5e-5];SL.Pb=[.01,0,2.5e-5];SL.tM=-1e9;SL.zp=SL.lp=null;
+  if(all){SL.xsg=0;SL.ysg=0}
+}
+slReset(true);
+const sLon=()=>SL.ysg<-0.3?-1:1,sLat=()=>SL.xsg<-0.3?-1:1;   // スマホの前・右が車の前・右と同じ向きか（走りながら確認）
+const slSy=()=>sLon()*(cfg.fy?-1:1),slGs=()=>sLat()*(cfg.fx?-1:1);   // 表示の向きに直した符号（前後G・ヨーレート）
+function yawLeft(){return yawF==null?null:(yawF-SL.yb)*slGs()}
+// ピッチ・ロールの角速度（°/s）。勾配・カントの表示と同じ向き（ノーズが上がる＋、右が下がる＋）で、勾配補正が覚えたジャイロのずれを引く
+function pitchUp(){return pitF==null?null:sLon()*(SL.h*pitF-SL.bb*180/Math.PI)}
+function rollRight(){return rolF==null?null:(cfg.fx?-1:1)*(SL.h*rolF+SL.ba*180/Math.PI)}   // 左旋回＋（°/s）。ローパスをかけた値
+function slWin(t0,t1){   // ためてある値の、時刻 t0〜t1（ms）の平均
+  const B=SL.buf;let i=B.length-1;if(i<1||B[0][0]>t0)return null;
+  while(i>0&&B[i][0]>t1)i--;let j=i;while(j>0&&B[j][0]>t0)j--;
+  const p=B[i],q=B[j],T=p[1]-q[1];if(T<0.3||T<(t1-t0)*.0007)return null;
+  const m=k=>(p[k]-q[k])/T;
+  return{la:m(2),lo:m(3),la2:m(4),lo2:m(5),w:m(6),w2:m(7),lw:m(8),ga:m(9),gb:m(10)};
+}
+function slKf(P,y,R){const S=P[0]+R,k0=P[0]/S,k1=P[1]/S;P[2]-=k1*P[1];P[1]*=1-k0;P[0]*=1-k0;return[k0*y,k1*y]}   // 傾きとジャイロのずれを直す量
+function slH(dz,dg,R){   // ジャイロの回転の向きの確認: GPS側の傾きの変化とジャイロの変化が逆向きの状態が続いたら符号を入れ替える
+  if(Math.abs(dg)<.004)return;
+  const wt=Math.min(1,dg*dg/(2*R));SL.hc+=(Math.max(-1.5,Math.min(1.5,dz/dg))-SL.hc)*.15*wt;SL.hn+=wt;
+  if(SL.hn>4&&SL.hc<-.4){SL.h=-SL.h;SL.hc=.5;SL.hn=0}
+}
+function slStep(lat,lon,dt,now){   // lat・lon＝0点の重力を引いたGの、スマホの右・前の成分
+  const sp=gps.sp,D=Math.PI/180,cl=v=>Math.max(-.3,Math.min(.3,v)),G=gyA;
+  if(G.n){G.l=[G.ex/G.n,G.fw/G.n,G.u/G.n];G.ex=G.fw=G.u=G.n=0}
   if(yawRaw!=null&&sp!=null&&sp<1&&Math.abs(yawRaw-SL.yb)<5)SL.yb+=(yawRaw-SL.yb)*Math.min(1,dt/5);   // 止まっている間にジャイロのずれを覚える
-  const W=SL.W||(SL.W={T:0,x:0,y:0,x2:0,y2:0,w:0,wn:0});
-  W.T+=dt;W.x+=tx*dt;W.y+=ty*dt;W.x2+=tx*tx*dt;W.y2+=ty*ty*dt;
-  if(yawRaw!=null&&sp!=null){W.w+=(sp/3.6)*((yawRaw-SL.yb)*Math.PI/180)/9.81*dt;W.wn+=dt}
-  if(gps===SL.g)return;   // GPSの更新ごとに1回評価
-  const g0=SL.g;SL.g=gps;SL.W=null;
+  const wu=yawRaw==null?0:(G.l[2]-SL.yb)*D,live=now-SL.tM<3000;
+  if(live){   // GPSで直せている間だけジャイロで傾きを進める（途切れたら直前の値を保つ）。ヨーで向きが変わると勾配とカントが入れ替わる分も含める
+    const ra=SL.h*(-G.l[1]*D+wu*SL.b)-SL.ba,rb=SL.h*(G.l[0]*D-wu*SL.a)-SL.bb;
+    SL.a=cl(SL.a+ra*dt);SL.b=cl(SL.b+rb*dt);SL.Ga+=ra*dt;SL.Gb+=rb*dt;
+  }
+  for(const P of[SL.Pa,SL.Pb]){
+    if(live){P[0]+=dt*(dt*P[2]-2*P[1]);P[1]-=dt*P[2];P[2]=Math.min(1e-4,P[2]+1e-10*dt)}
+    P[0]=Math.min(.01,P[0]+2e-6*dt);const m=Math.sqrt(P[0]*P[2])*.95;P[1]=Math.max(-m,Math.min(m,P[1]));
+  }
+  const c=SL.c;c[0]+=dt;c[1]+=lat*dt;c[2]+=lon*dt;c[3]+=lat*lat*dt;c[4]+=lon*lon*dt;c[5]+=wu*dt;c[6]+=wu*wu*dt;c[7]+=lat*wu*dt;c[8]+=SL.Ga*dt;c[9]+=SL.Gb*dt;
+  SL.buf.push([now,c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8],c[9]]);while(SL.buf[0][0]<now-9000)SL.buf.shift();
+  if(gps!==SL.g)slGps(now);   // GPSの更新ごとに1回、GPSと比べて直す
+  SL.bx=-(cfg.fx?-1:1)*SL.a;SL.by=sLon()*SL.b;   // 表示の向き: カントは右下がり＋、勾配は上り＋
+}
+function slGps(now){
+  const g0=SL.g,sp=gps.sp,zp=SL.zp,lp=SL.lp,cl=v=>Math.max(-.3,Math.min(.3,v)),c5=v=>Math.max(-5,Math.min(5,v)),cb=v=>Math.max(-.02,Math.min(.02,v));
+  SL.g=gps;SL.zp=SL.lp=null;
   if(!g0||g0.sp==null||sp==null||!g0.ts||!gps.ts||!(gps.acc<=25))return;
-  const T=(gps.ts-g0.ts)/1000;if(!(T>0.4&&T<2.5)||W.T<0.3)return;
-  const n=W.T,mx=W.x/n,my=W.y/n,sx=Math.sqrt(Math.max(0,W.x2/n-mx*mx)),sy=Math.sqrt(Math.max(0,W.y2/n-my*my));
-  const aG=(sp-g0.sp)/3.6/T/9.81,mw=W.wn>n*.8?W.w/W.wn:null,k=Math.min(1,T/4),cl=v=>Math.max(-.3,Math.min(.3,v));
-  const stop=sp<1&&g0.sp<1,run=sp>=10&&g0.sp>=10;
-  if(run&&Math.abs(aG)>0.08&&sy<0.15)SL.ysg=Math.max(-5,Math.min(5,SL.ysg+aG*my*T));
-  if(run&&mw!=null&&Math.abs(mw)>0.08&&sx<0.15)SL.xsg=Math.max(-5,Math.min(5,SL.xsg+mw*mx*T));
-  if(!(stop||run))return;
-  if(sy<0.06&&Math.abs(my)<0.35){SL.by=cl(SL.by+(slSy()*my-(stop?0:aG)-SL.by)*k);SL.ok=true}
-  if(sx<0.06&&Math.abs(mx)<0.5&&(stop||mw!=null))SL.bx=cl(SL.bx+(mx-(stop?0:mw*slGs())-SL.bx)*k);
+  const T=(gps.ts-g0.ts)/1000;if(!(T>0.4&&T<2.5))return;
+  const lag=Date.now()-gps.ts,tk=now-(lag>0&&lag<3000?lag:0),t0=tk-T*1000;   // GPSが測った時刻（センサーの時計で）
+  const aG=(sp-g0.sp)/3.6/T/9.81,lo=Math.min(sp,g0.sp),stop=sp<1&&g0.sp<1,run=lo>=10;
+  const sv=(run?.07:.3)*Math.max(1,gps.acc/10),rv=2*(sv/(T*9.81))**2;   // GPSの車速の誤差から来る、前後加速度の誤差（低速は車速が粗いので大きく見る）
+  // 前後（勾配）: 遅れの候補ごとに区間をずらして平均をとる
+  const ws=SLT.map(s=>slWin(t0-s*1000,tk-s*1000)),w=ws[SL.tj];
+  if(w){
+    const sy=Math.sqrt(Math.max(0,w.lo2-w.lo*w.lo));
+    if(run&&Math.abs(aG)>0.08&&sy<0.15)SL.ysg=c5(SL.ysg+aG*w.lo*T);
+    const s=sLon(),z=ws.map(x=>x?x.lo-s*aG:null),g=ws.map(x=>x?x.gb:null),same=zp&&zp.s===s;
+    if(run&&same&&Math.abs(aG-zp.aG)>0.03&&z.every((v,j)=>v!=null&&zp.z[j]!=null)){   // 加減速が変わったとき、傾きの変化がいちばん小さく見える遅れを選ぶ
+      z.forEach((v,j)=>{const d=v-zp.z[j]-(g[j]-zp.g[j]);SL.E[j]=SL.E[j]*.97+d*d});SL.En=SL.En*.97+1;
+      if(SL.En>6){let m=0;SL.E.forEach((v,j)=>{if(v<SL.E[m])m=j});if(SL.E[m]<SL.E[SL.tj]*.8)SL.tj=m}
+    }
+    const dA=same?aG-zp.aG:aG,y=(stop?w.lo:z[SL.tj])-(w.gb+SL.b-SL.Gb);
+    const R=stop?1.6e-5+.25*sy*sy+.5*y*y:1.6e-5+rv+.09*dA*dA+.09*sy*sy;   // 揺れ・加減速の変わり目・低速ほど信用を下げる（止める／進めるの二択にしない）
+    if(same&&!stop)slH(z[SL.tj]-zp.z[SL.tj],g[SL.tj]-zp.g[SL.tj],R);
+    const k=slKf(SL.Pb,y,R);SL.b=cl(SL.b+k[0]);SL.bb=cb(SL.bb+k[1]);SL.ok=true;SL.tM=now;
+    if(!stop)SL.zp={s,aG,z,g};
+  }
+  // 左右（カント）: ヨーレートは同じ時計なので区間はずらさない。車速だけ遅れの分を進める
+  const v=slWin(t0,tk);
+  if(v&&(stop||yawRaw!=null)){
+    const vm=Math.max(0,(sp+g0.sp)/7.2+aG*9.81*SLT[SL.tj]),mw=vm*v.w/9.81,sx=Math.sqrt(Math.max(0,v.la2-v.la*v.la));
+    if(run&&Math.abs(mw)>0.08&&sx<0.15)SL.xsg=c5(SL.xsg-mw*v.la*T);
+    const s=sLat(),c=stop?0:s*vm/9.81,z=v.la+c*v.w,y=z-(v.ga+SL.a-SL.Ga);
+    const vr=Math.max(0,v.la2-v.la*v.la+c*c*(v.w2-v.w*v.w)+2*c*(v.lw-v.la*v.w));   // 「横G−車速×ヨーレート」の区間内のばらつき（旋回中でも小さい）
+    const R=1.6e-5+.25*vr+(run||stop?.0064:.09)*mw*mw+(stop?.5*y*y:0);
+    if(lp&&lp.s===s&&!stop)slH(z-lp.z,v.ga-lp.g,R);
+    const k=slKf(SL.Pa,y,R);SL.a=cl(SL.a+k[0]);SL.ba=cb(SL.ba+k[1]);SL.tM=now;
+    if(!stop)SL.lp={s,z,g:v.ga};
+  }
 }
 const slPct=v=>v/Math.sqrt(1-v*v)*100;   // sin → %
 // main loop
 function loop(now){
-  let tx=0,ty=0,tz=0;
+  let tx=0,ty=0,tz=0,lat=0,lon=0;
   if(sensor&&basis){   // 0点の重力を引いた残り＝車の加速度。それを右・前・上の向きに分ける
     const B=basis,d={x:raw.x-B.g.x,y:raw.y-B.g.y,z:raw.z-B.g.z};
-    const lat=d.x*B.ex.x+d.y*B.ex.y+d.z*B.ex.z,lon=d.x*B.fw.x+d.y*B.fw.y+d.z*B.fw.z;
+    lat=d.x*B.ex.x+d.y*B.ex.y+d.z*B.ex.z;lon=d.x*B.fw.x+d.y*B.fw.y+d.z*B.fw.z;
     tz=d.x*B.u.x+d.y*B.u.y+d.z*B.u.z;
     tx=-lat*(cfg.fx?-1:1);ty=lon*(cfg.fy?-1:1);   // ボールは体が押される向き（右カーブ→左、加速→下）
   }
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
   let rx=tx,ry=ty;
-  if(sensor&&basis){slStep(tx,ty,dt);if(cfg.slope){tx-=SL.bx;ty-=slSy()*SL.by}}
-  const yawD=yawLeft(),slOn=!!(cfg.slope&&SL.ok);   // ヨーレートの表示は左旋回＋
+  if(sensor&&basis){slStep(lat,lon,dt,now);if(cfg.slope){tx-=SL.bx;ty-=slSy()*SL.by}}
+  const yawD=yawLeft(),pitD=pitchUp(),rolD=rollRight(),slOn=!!(cfg.slope&&SL.ok);   // ヨーレートの表示は左旋回＋
   if(rec&&scorer&&sensor)feedScore(scorer,tx,ty,dt,gps.sp);
   if(liveS&&sensor)feedScore(liveS,tx,ty,dt,gps.sp);
   const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
@@ -2024,10 +2260,10 @@ function loop(now){
   if(now-lastS>=100){
     lastS=now;
     let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
-    const gr=slOn?+slPct(SL.by).toFixed(1):null,ca=slOn?+slPct(SL.bx).toFixed(1):null,yw=yawD==null?null:+yawD.toFixed(1);
-    hist.push({t:now/1000,x:sg.x,y:sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca});if(hist.length>N)hist.shift();
+    const gr=slOn?+slPct(SL.by).toFixed(1):null,ca=slOn?+slPct(SL.bx).toFixed(1):null,yw=yawD==null?null:+yawD.toFixed(1),pw=pitD==null?null:+pitD.toFixed(1),rw=rolD==null?null:+rolD.toFixed(1);
+    hist.push({t:now/1000,x:sg.x,y:sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca,pr:pw,rr:rw});if(hist.length>N)hist.shift();
     if(rec){
-      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt,yw,gr,ca,cfg.slope?+sgR.x.toFixed(3):null,cfg.slope?+(-sgR.y).toFixed(3):null]);
+      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt,yw,gr,ca,cfg.slope?+sgR.x.toFixed(3):null,cfg.slope?+(-sgR.y).toFixed(3):null,pw,rw]);
       logPen.push(scorer?+takeP(scorer).toFixed(2):0);
       if(scorer)for(;recEvN<scorer.ev.length;recEvN++)logEv.push([log.length-1,scorer.ev[recEvN].type]);
     }
@@ -2041,9 +2277,11 @@ function loop(now){
     {const A=axMax,f=(v,sg)=>(sg>0?'+':'-')+Math.abs(v).toFixed(2);
      $('gxp').textContent=f(A.xp,1);$('gxn').textContent=f(A.xn,-1);$('gyp').textContent=f(A.yp,1);$('gyn').textContent=f(A.yn,-1);$('gzp').textContent=f(A.zp,1);$('gzn').textContent=f(A.zn,-1)}
     $('alt').textContent=gps.alt==null?'--':Math.round(gps.alt);
+    {const f=v=>v==null?'--':(Math.abs(v)<.5?'0':(v>0?'+':'')+v.toFixed(0));$('prt').textContent=f(pitD);$('rrt').textContent=f(rolD)}
     $('yaw').textContent=yawD==null?'--':(Math.abs(yawD)<.5?'0':(yawD>0?'+':'')+yawD.toFixed(0));
     {const f=v=>(Math.abs(v)<.05?0:v).toFixed(1);$('grd').textContent=slOn?(SL.by>0.0005?'+':'')+f(slPct(SL.by)):'--';$('cnt').textContent=slOn?(SL.bx>0.0005?'+':'')+f(slPct(SL.bx)):'--'}
-    $('pk').textContent=peak.toFixed(2);
+    $('pk').textContent=peak.toFixed(2);$('pks').textContent=peak.toFixed(2);
+    $('rdot').hidden=!rec;if(rec){const e=Math.floor((now-t0)/1000);$('rtm').textContent=Math.floor(e/60)+':'+String(e%60).padStart(2,'0')}
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
     $('lim').textContent=limTxt();
     $('sp').style.color=overState?css('--peak'):'';
@@ -2053,7 +2291,7 @@ function loop(now){
       if(rec){const r=scoreResult(scorer);el.textContent=r?'採点中　ジャーク '+r.jerk+'　丸み '+r.round+'　（暫定 '+r.total+'点）':'採点中（加減速や旋回が少ないため集計中）'}
       const ad=$('adv'),ar=rec?scoreResult(scorer):null;ad.hidden=!ar;if(ar){const l=adviceList(ar);ad.textContent='アドバイス：'+(l[0]||'滑らかに運転できています。この調子です。')}
     }
-    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail});
+    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn?slPct(SL.bx):0}});
   }
   if(!$('pl').hidden){
     if(gc.clientWidth)drawPanels(gx,gc.clientWidth,hist,false);
