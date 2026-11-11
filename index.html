@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.5.0 (2026-11-11) デザインを切り替えられるように（設定「デザイン」）: 標準／レーシング（光る軌跡・車速の弧・LEDバー）／アナログ計器（ベゼルと真鍮色の玉・水平儀・針のスピードメーター）／
+                     HUD（黒地に細い線・水平線と姿勢の目盛り）。配色と数字の書体もデザインごとに変わる
   2.4.0 (2026-11-11) ラップ比較を再生画面のグラフに重ねて表示（比べる相手＝オレンジ／同じ色の点線、同じ地点どうしを重ねる）。グラフに「タイム差」の段を追加し、比べると選んだラップの範囲に拡大。
                      グラフを拡大しているときは1本指で左右に動かせる（タップでカーソル移動）。設定画面のスクロールが裏の画面に取られないように
   2.3.0 (2026-11-11) ロール・ピッチ角を実際の傾き（路面＋車体）に近い値に: 勾配補正と同じ推定（ジャイロで追い、GPSの車速・ヨーレートで直す）から角度を出す。
@@ -266,6 +268,29 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .adv ul{margin:6px 0 0;padding-left:1.2em}.adv li+li{margin-top:4px}.adv p{margin:6px 0 0}
 .adv-live{font-weight:600}
 .secn{display:flex;align-items:center;justify-content:center;border-radius:50%;background:#8b5cf6;color:#fff;border:2px solid #fff;font:700 12px/1 system-ui,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+/* デザイン（スキン） */
+.led{display:none}
+:root[data-skin="a"]{--bg:#07090d;--fg:#e8f1ff;--mut:#7a8ba3;--ring:#243043;--ball:#22d3ee;--peak:#f43f5e;--panel:#0d131c;--btn:#22d3ee;--btnfg:#04222a}
+:root[data-skin="b"]{--bg:#14110d;--fg:#f3ead8;--mut:#a89b80;--ring:#4a4338;--ball:#e0a030;--peak:#ea580c;--panel:#1d1a15;--btn:#c2410c;--btnfg:#fff}
+:root[data-skin="c"]{--bg:#000;--fg:#fff;--mut:#8a8a8a;--ring:#333;--ball:#ff2d2d;--peak:#ff2d2d;--panel:#0a0a0a;--btn:#fff;--btnfg:#000}
+:root[data-skin="a"] #c,:root[data-skin="b"] #c,:root[data-skin="c"] #c,:root[data-skin="a"] #vc,:root[data-skin="b"] #vc,:root[data-skin="c"] #vc{background:transparent}
+[data-skin="a"] .led{display:grid;grid-template-columns:repeat(15,1fr);gap:4px;margin:0 2px 8px}
+[data-skin="a"] .led i{height:8px;border-radius:2px;background:#141b26}
+[data-skin="a"] strong,[data-skin="a"] .lapbig b{font-style:italic;font-weight:800;letter-spacing:-.02em}
+[data-skin="a"] button,[data-skin="a"] select{border-radius:24px}
+[data-skin="a"] .row>div,[data-skin="a"] .att,[data-skin="a"] .lapm{border:1px solid #1d2735}
+[data-skin="a"] #gx{color:#22d3ee}[data-skin="a"] #gy{color:#fbbf24}
+[data-skin="b"] strong,[data-skin="b"] .lapbig b{font-family:ui-monospace,Menlo,Consolas,monospace}
+[data-skin="b"] button,[data-skin="b"] select{border-radius:5px;letter-spacing:.04em}
+[data-skin="b"] .row>div,[data-skin="b"] .lapm{border:1px solid #4a4338;border-radius:6px;background:#0b0a08}
+[data-skin="b"] .att.ins{background:none;padding:0}
+[data-skin="b"] .att.ins svg{max-height:none}
+[data-skin="b"] .att.ins strong{font-size:.8rem;font-weight:400;color:var(--mut);margin-top:4px}
+.att .bz{fill:#2a2620;stroke:#4a443a;stroke-width:2}.att .t1{stroke:#6b6252;stroke-width:1}.att .t2{stroke:#f3ead8;stroke-width:2}.att .tx text{fill:#b9ac93;font-size:10px;text-anchor:middle}
+[data-skin="c"] strong,[data-skin="c"] .lapbig b{font-weight:200}
+[data-skin="c"] button,[data-skin="c"] select{border-radius:0}
+[data-skin="c"] .row>div,[data-skin="c"] .att,[data-skin="c"] .lapm{background:none;border-radius:0;border-top:1px solid #222}
+[data-skin="c"] .row2:not(.attw) strong{font-size:2.2rem}
 </style>
 </head>
 <body>
@@ -278,6 +303,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <section id="pm">
 <div class="bcol">
 <div class="hud"><span id="rdot" class="rdot" hidden>● 記録中 <b id="rtm">0:00</b></span><span></span><span>制限 <b id="lim">--</b></span></div>
+<div id="led" class="led" aria-hidden="true"></div>
 <div class="bw"><canvas id="c" aria-label="Gボール"></canvas></div>
 </div>
 <div class="scol">
@@ -430,6 +456,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>音色</span><span><select id="tim" aria-label="音色"></select> <button id="timt">試聴</button></span></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
+<div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
 <div class="set"><span>二輪モード（ベータ） <small>バイク用。車体の傾き（バンク角）を推定し、左右Gを旋回Gとして表示・記録・採点する</small></span><input type="checkbox" id="bike" aria-label="二輪モード"></div>
 <p class="mcap" id="bikest" hidden>GPSの車速が必要です。0点合わせは車体をまっすぐ立てた状態で行うのが確実ですが、サイドスタンドで合わせても、20km/h以上で直進している間に「直立」を自動で覚えます。勾配の補正は常にオンになります。ベータ版のため、バンク角や採点の基準は今後変わることがあります。</p>
 <div class="set"><span>勾配補正 <small>坂道やカント（路面の横の傾き）で出るGを、GPSの車速とジャイロから推定して差し引く</small></span><input type="checkbox" id="slp" aria-label="勾配補正"></div>
@@ -453,7 +480,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.4.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.5.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -462,7 +489,7 @@ let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
 const GP=[['dt','タイム差'],['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['bank','バンク角'],['tilt','ロール・ピッチ角'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
-let cfg={gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,tfc:.5,v:4};
+let cfg={skin:'std',gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,tfc:.5,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);cfg.yfc=Math.min(10,Math.max(.5,+cfg.yfc||2));cfg.tfc=Math.min(2,Math.max(.1,+cfg.tfc||.5));if(!Array.isArray(cfg.gp))cfg.gp=['x','y','rot','sp'];cfg.gp=cfg.gp.filter(k=>GP.some(p=>p[0]===k));if(!cfg.gp.length)cfg.gp=['x','y','rot','sp'];if(cfg.lv!=='live')cfg.lv='saved';saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
@@ -562,6 +589,7 @@ $('slp').onchange=e=>{cfg.slope=e.target.checked;saveCfg();slReset(false)};
 function bikeUi(){const b=!!cfg.bike;$('bike').checked=b;$('bikest').hidden=!b;$('bkrow').hidden=!b;$('cntl').textContent=b?'バンク °':'カント %';$('slp').disabled=b}
 $('bike').onchange=e=>{cfg.bike=e.target.checked;if(cfg.bike&&!cfg.gp.includes('bank'))cfg.gp.push('bank');saveCfg();gpUi();slReset(true);clearMax();bikeUi()};
 bikeUi();
+$('skin').onchange=e=>{cfg.skin=e.target.value;saveCfg();skinApply();size()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();mirror(false,true)};
 // 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
@@ -782,7 +810,15 @@ const ATT_PB='<g class="atb"><circle cx="42" cy="52" r="12"/><circle cx="110" cy
 const ATT_P='<g class="atb"><path d="M28 56 L28 42 L48 40 L62 26 L96 26 L110 40 L124 44 L124 56 Z"/><circle class="f" cx="48" cy="58" r="7"/><circle class="f" cx="104" cy="58" r="7"/><rect class="hl" x="116" y="45" width="7" height="5" rx="1.5"/><rect class="bl" x="29" y="43" width="6" height="6" rx="1.5"/></g><text x="140" y="16" text-anchor="end">前→</text>';
 function attHtml(p){return '<div class="att"><small id="'+p+'arl">ロール</small><svg viewBox="0 0 150 72" aria-hidden="true"><line class="gl" x1="6" y1="66" x2="144" y2="66"/><g id="'+p+'arg">'+ATT_R+'</g></svg><strong id="'+p+'arv">--</strong></div>'
   +'<div class="att"><small id="'+p+'apl">ピッチ</small><svg viewBox="0 0 150 72" aria-hidden="true"><line class="gl" x1="6" y1="66" x2="144" y2="66"/><g id="'+p+'apg">'+ATT_P+'</g></svg><strong id="'+p+'apv">--</strong></div>'}
-function attSet(p,roll,pitch,bike,brk,simple){   // roll: 右下がり＋（二輪はバンク角）、pitch: 前上がり＋（°）
+function attSet(p,roll,pitch,bike,brk,simple,sp){
+  const box=$(p+'att'),sk=SKIN==='b'?'b':'s';if(box._sk!==sk){box._sk=sk;box.innerHTML=sk==='b'?attHtmlB(p):attHtml(p)}
+  if(sk==='b'){   // アナログ計器: 水平儀と針
+    const c2=(v,m)=>Math.max(-m,Math.min(m,v||0));
+    $(p+'hzg').setAttribute('transform','rotate('+(-c2(roll,70))+' 75 75) translate(0 '+(c2(pitch,20)*2.8).toFixed(1)+')');
+    $(p+'ndl').setAttribute('transform','rotate('+(135+270*Math.min(1,(sp||0)/180)).toFixed(1)+' 75 75)');
+    const q=(v,a,b)=>v==null?'--':(v>=0?a:b)+Math.abs(v).toFixed(0)+'°';
+    $(p+'hzv').textContent=(bike?'バンク ':'ロール ')+q(roll,'右','左')+'・ピッチ '+q(pitch,'+','−');$(p+'spv').textContent=(sp==null?'--':Math.round(sp))+' km/h';return;
+  }   // roll: 右下がり＋（二輪はバンク角）、pitch: 前上がり＋（°）
   const g=$(p+'arg'),l=bike?'b':'r';if(g._k!==l){g._k=l;g.innerHTML=bike?ATT_B:ATT_R;$(p+'apg').innerHTML=bike?ATT_PB:ATT_P;}
   {const t=(bike?'バンク（推定）':'ロール')+(simple&&!bike?'（簡易）':''),t2='ピッチ'+(simple?'（簡易）':'');if($(p+'arl').textContent!==t)$(p+'arl').textContent=t;if($(p+'apl').textContent!==t2)$(p+'apl').textContent=t2}
   const cl=(v,m)=>Math.max(-m,Math.min(m,v)),f=(v,a,b)=>v==null?'--':(Math.abs(v)<.05?'0.0°':(v>0?a:b)+' '+Math.abs(v).toFixed(1)+'°');
@@ -1737,8 +1773,98 @@ $('timt').onclick=()=>{
 // drawing
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function envAdd(en,x,y,m){const a=Math.atan2(y,x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>en[i])en[i]=v}}
+// ===== デザイン（スキン）: 標準のほかに、レーシング（a）・アナログ計器（b）・HUD（c）。Gボールの描き方と配色を切り替える =====
+let SKIN='std';
+function skinApply(){SKIN=['a','b','c'].includes(cfg.skin)?cfg.skin:'std';document.documentElement.dataset.skin=SKIN;$('skin').value=SKIN;
+  const l=$('led');if(l&&!l.children.length)l.innerHTML='<i></i>'.repeat(15)}
+function ledSet(f){   // レーシング: 上のLED（Gが大きいほど多く点く）
+  const l=$('led'),n=Math.round(Math.max(0,Math.min(1,f))*15);if(l._n===n)return;l._n=n;
+  [...l.children].forEach((e,i)=>{e.style.background=i<n?(i<8?'#22d3ee':i<11?'#a3e635':i<13?'#fbbf24':'#f43f5e'):''});
+}
+function drawBallSkin(c,w,sc){
+  const H=sc.hud,R=w/2,S=sc.S,f=Math.max(.7,Math.min(1.3,w/360)),P=Math.PI,sk=SKIN;
+  const k=R*(sk==='b'?.66:H?.76:.9);
+  const sgn=(v,d)=>(v>0?'+':'')+v.toFixed(d);
+  let bx=sc.x/S,by=sc.y/S;const l=Math.hypot(bx,by);if(l>1){bx/=l;by/=l}
+  const BX=R+bx*k,BY=R+by*k;
+  const envPath=()=>{c.beginPath();sc.env.forEach((v,i)=>{const a=i/72*2*P-P,r=Math.min(v/S,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?c.lineTo(X,Y):c.moveTo(X,Y)});c.closePath()};
+  const trailPath=()=>{c.beginPath();sc.trail.forEach((p,i)=>{let x=p.x/S,y=p.y/S;const m=Math.hypot(x,y);if(m>1){x/=m;y/=m}i?c.lineTo(R+x*k,R+y*k):c.moveTo(R+x*k,R+y*k)});c.lineTo(BX,BY)};
+  const ticks=(r0,r1,n,col,lw)=>{c.strokeStyle=col;c.lineWidth=lw;c.beginPath();for(let i=0;i<n;i++){const a=i/n*2*P;c.moveTo(R+r0*Math.cos(a),R+r0*Math.sin(a));c.lineTo(R+r1*Math.cos(a),R+r1*Math.sin(a))}c.stroke()};
+  const yawA=H&&H.yaw!=null&&Math.abs(H.yaw)>=.5?Math.max(-1,Math.min(1,H.yaw/30))*P/3:0;
+  const yawArc=(r,col,lw)=>{if(!yawA)return;c.strokeStyle=col;c.lineWidth=lw;c.lineCap='round';c.beginPath();c.arc(R,R,r,-P/2,-P/2-yawA,yawA>0);c.stroke();c.lineCap='butt'};
+  c.clearRect(0,0,w,w);c.textBaseline='alphabetic';
+  if(sk==='a'){
+    const g=c.createRadialGradient(R,R,0,R,R,R);g.addColorStop(0,'#111a29');g.addColorStop(1,'#07090d');c.fillStyle=g;c.beginPath();c.arc(R,R,R*.99,0,7);c.fill();
+    if(H){   // 車速の弧（左下から右下へ、180km/hでいっぱい）
+      const a0=P*140/180,a1=P*400/180,r=R*.93,fr=H.sp==null?0:Math.min(1,H.sp/180);
+      c.lineCap='round';c.lineWidth=R*.055;c.strokeStyle='#141b26';c.beginPath();c.arc(R,R,r,a0,a1);c.stroke();
+      if(fr>0){const lg=c.createLinearGradient(0,0,w,0);lg.addColorStop(0,'#22d3ee');lg.addColorStop(1,H.over?'#f43f5e':'#a3e635');c.strokeStyle=lg;c.beginPath();c.arc(R,R,r,a0,a0+(a1-a0)*fr);c.stroke()}
+      c.lineCap='butt';
+    }
+    c.strokeStyle='#1d2735';c.lineWidth=1.2;for(let i=1;i<=3;i++){c.beginPath();c.arc(R,R,k*i/3,0,7);c.stroke()}
+    c.beginPath();c.moveTo(R-k,R);c.lineTo(R+k,R);c.moveTo(R,R-k);c.lineTo(R,R+k);c.stroke();
+    c.fillStyle='#4b5a70';c.font='10px system-ui';c.textAlign='left';[1/3,2/3,1].forEach(q=>c.fillText(+(S*q).toFixed(2)+'G',R+4,R-k*q+11));
+    if(sc.peak>.02){envPath();c.globalAlpha=.10;c.fillStyle='#f43f5e';c.fill();c.globalAlpha=.7;c.strokeStyle='#f43f5e';c.lineWidth=1.3;c.stroke();c.globalAlpha=1}
+    if(sc.trail.length>1){trailPath();c.lineJoin='round';c.lineCap='round';c.shadowColor='#22d3ee';c.shadowBlur=14;c.strokeStyle='rgba(34,211,238,.85)';c.lineWidth=3;c.stroke();c.lineCap='butt'}
+    c.shadowBlur=20;c.shadowColor='#22d3ee';c.fillStyle='#e8fbff';c.beginPath();c.arc(BX,BY,R*.06,0,7);c.fill();c.shadowBlur=0;
+    if(H){
+      yawArc(k*1.07,'#fbbf24',4);
+      c.font='italic 800 '+Math.round(40*f)+'px system-ui';c.textBaseline='top';
+      c.textAlign='left';c.fillStyle=H.over?'#f43f5e':'#e8f1ff';c.fillText(H.sp==null?'--':Math.round(H.sp),4,0);
+      c.textAlign='right';c.fillStyle='#e8f1ff';c.fillText(H.m.toFixed(2),w-4,0);
+      c.font=Math.round(11*f)+'px system-ui';c.fillStyle='#6b7c93';c.textAlign='left';c.fillText('km/h',6,42*f);c.textAlign='right';c.fillText('G',w-6,42*f);
+      c.textBaseline='alphabetic';c.textAlign='center';c.font=Math.round(12*f)+'px system-ui';c.fillStyle='#fbbf24';c.fillText('ヨー '+(H.yaw==null?'--':sgn(Math.abs(H.yaw)<.5?0:H.yaw,0)+'°/s'),R,w-6);
+    }
+  }else if(sk==='b'){
+    let g=c.createRadialGradient(R,R*.8,R*.3,R,R,R);g.addColorStop(0,'#4a443a');g.addColorStop(.75,'#1c1915');g.addColorStop(1,'#0c0a08');c.fillStyle=g;c.beginPath();c.arc(R,R,R*.995,0,7);c.fill();
+    g=c.createRadialGradient(R,R*.9,0,R,R,R*.92);g.addColorStop(0,'#211e18');g.addColorStop(1,'#0b0a08');c.fillStyle=g;c.beginPath();c.arc(R,R,R*.92,0,7);c.fill();c.strokeStyle='#000';c.lineWidth=2;c.stroke();
+    ticks(R*.84,R*.91,72,'#6b6252',1);ticks(R*.79,R*.91,12,'#f3ead8',2.5);
+    c.strokeStyle='#4a4338';c.lineWidth=1;for(let i=1;i<=3;i++){c.beginPath();c.arc(R,R,k*i/3,0,7);c.stroke()}
+    c.beginPath();c.moveTo(R-k*1.1,R);c.lineTo(R+k*1.1,R);c.moveTo(R,R-k*1.1);c.lineTo(R,R+k*1.1);c.stroke();
+    c.fillStyle='#b9ac93';c.font=Math.round(11*f)+'px system-ui';c.textAlign='center';c.fillText('加速',R,R-k*1.1-4);c.fillText('左',R-k*1.1-9,R+4);c.fillText('右',R+k*1.1+9,R+4);if(!H)c.fillText('減速',R,R+k*1.1+13);
+    c.fillStyle='#8a7d66';c.font='10px system-ui';c.textAlign='left';[1/3,2/3,1].forEach(q=>c.fillText(+(S*q).toFixed(2),R+4,R-k*q+11));
+    if(sc.peak>.02){envPath();c.setLineDash([3,3]);c.strokeStyle='#ea580c';c.lineWidth=1.5;c.stroke();c.setLineDash([])}
+    sc.trail.forEach((p,i)=>{c.globalAlpha=i/sc.trail.length*.3;c.fillStyle='#e0a030';c.beginPath();c.arc(R+p.x/S*k,R+p.y/S*k,R*.022,0,7);c.fill()});c.globalAlpha=1;
+    const br=R*.065;g=c.createRadialGradient(BX-br*.35,BY-br*.4,br*.1,BX,BY,br);g.addColorStop(0,'#fff3d0');g.addColorStop(.5,'#e0a030');g.addColorStop(1,'#7a4a08');c.fillStyle=g;c.beginPath();c.arc(BX,BY,br,0,7);c.fill();
+    if(H){
+      yawArc(R*.955,'#ea580c',4);
+      const bw=92*f,bh=30*f,x=R-bw/2,y=R+k*1.1+2;c.fillStyle='#0b0a08';c.strokeStyle='#4a4338';c.lineWidth=1;c.beginPath();c.rect(x,y,bw,bh);c.fill();c.stroke();
+      c.fillStyle='#f3ead8';c.font='700 '+Math.round(20*f)+'px ui-monospace,Menlo,monospace';c.textAlign='center';c.fillText(H.m.toFixed(2)+'G',R,y+bh*.74);
+      c.font=Math.round(11*f)+'px system-ui';c.fillStyle='#b9ac93';c.textAlign='left';c.fillText((H.sp==null?'--':Math.round(H.sp))+' km/h',4,13);c.textAlign='right';c.fillText('ヨー '+(H.yaw==null?'--':sgn(Math.abs(H.yaw)<.5?0:H.yaw,0)),w-4,13);
+    }
+  }else{
+    c.fillStyle='#000';c.fillRect(0,0,w,w);
+    ticks(k,k*1.06,36,'#555',1);c.strokeStyle='#fff';c.lineWidth=1;c.globalAlpha=.9;c.beginPath();c.arc(R,R,k,0,7);c.stroke();c.globalAlpha=1;
+    c.strokeStyle='#333';c.beginPath();c.arc(R,R,k/2,0,7);c.stroke();
+    c.fillStyle='#555';c.font='10px system-ui';c.textAlign='left';[.5,1].forEach(q=>c.fillText(+(S*q).toFixed(2)+'G',R+4,R-k*q+11));
+    if(H&&H.roll!=null&&H.pitch!=null){   // 姿勢: 水平線が傾き（ロール）・上下（ピッチ）で動く。目盛りは5°ごと
+      const d=k/22;c.save();c.beginPath();c.arc(R,R,k*1.25,0,7);c.clip();c.translate(R,R);c.rotate(-Math.max(-60,Math.min(60,H.roll))*P/180);c.translate(0,Math.max(-12,Math.min(12,H.pitch))*d);
+      c.strokeStyle='rgba(255,255,255,.55)';c.fillStyle='rgba(255,255,255,.55)';c.lineWidth=1.2;c.font='9px system-ui';c.textAlign='left';
+      c.beginPath();c.moveTo(-k*1.2,0);c.lineTo(-k*.35,0);c.moveTo(k*.35,0);c.lineTo(k*1.2,0);
+      [-10,-5,5,10].forEach(v=>{const y=-v*d;c.moveTo(-k*.27,y);c.lineTo(-k*.1,y);c.moveTo(k*.1,y);c.lineTo(k*.27,y);c.fillText(v,k*.3,y+3)});c.stroke();c.restore();
+    }
+    c.strokeStyle='#fff';c.lineWidth=1.5;c.beginPath();c.moveTo(R-12,R);c.lineTo(R-4,R);c.lineTo(R,R+5);c.lineTo(R+4,R);c.lineTo(R+12,R);c.stroke();
+    if(sc.peak>.02){envPath();c.strokeStyle='rgba(255,45,45,.8)';c.lineWidth=1;c.stroke()}
+    if(sc.trail.length>1){trailPath();c.strokeStyle='rgba(255,255,255,.5)';c.lineWidth=1.5;c.lineJoin='round';c.stroke()}
+    c.fillStyle='#ff2d2d';c.beginPath();c.arc(BX,BY,R*.055,0,7);c.fill();
+    if(H){
+      yawArc(k*1.14,'#ff2d2d',3);
+      c.textBaseline='top';c.fillStyle='#fff';c.font='200 '+Math.round(46*f)+'px system-ui';c.textAlign='left';c.fillText(H.m.toFixed(2),2,-4);
+      c.font='200 '+Math.round(34*f)+'px system-ui';c.textAlign='right';c.fillStyle=H.over?'#ff2d2d':'#fff';c.fillText(H.sp==null?'--':Math.round(H.sp),w-2,-2);
+      c.font=Math.round(11*f)+'px system-ui';c.fillStyle='#777';c.textAlign='left';c.fillText('G',4,46*f);c.textAlign='right';c.fillText('km/h',w-4,38*f);
+      c.textBaseline='alphabetic';c.textAlign='center';c.fillStyle='#ff2d2d';c.fillText('ヨー '+(H.yaw==null?'--':sgn(Math.abs(H.yaw)<.5?0:H.yaw,0)+'°/s'),R,w-5);
+    }
+  }
+}
+// アナログ計器: 水平儀（ロール・ピッチ）とスピードメーター
+function attHtmlB(p){
+  const tk=(n,r0,r1,cls)=>Array.from({length:n+1},(_,i)=>{const a=(135+270*i/n)*Math.PI/180;return'<line class="'+cls+'" x1="'+(75+r0*Math.cos(a)).toFixed(1)+'" y1="'+(75+r0*Math.sin(a)).toFixed(1)+'" x2="'+(75+r1*Math.cos(a)).toFixed(1)+'" y2="'+(75+r1*Math.sin(a)).toFixed(1)+'"/>'}).join('');
+  return '<div class="att ins"><svg viewBox="0 0 150 150" aria-hidden="true"><circle cx="75" cy="75" r="73" class="bz"/><clipPath id="'+p+'hzc"><circle cx="75" cy="75" r="62"/></clipPath><g clip-path="url(#'+p+'hzc)"><g id="'+p+'hzg"><rect x="-100" y="-200" width="350" height="275" fill="#2b6ea8"/><rect x="-100" y="75" width="350" height="275" fill="#6b4a22"/><line x1="-100" y1="75" x2="250" y2="75" stroke="#f3ead8" stroke-width="2"/><g stroke="#f3ead8" stroke-width="1.5"><line x1="60" y1="61" x2="90" y2="61"/><line x1="52" y1="47" x2="98" y2="47"/><line x1="60" y1="89" x2="90" y2="89"/><line x1="52" y1="103" x2="98" y2="103"/></g></g></g><path d="M37 75 H63 L75 85 L87 75 H113" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linejoin="round"/><circle cx="75" cy="75" r="62" fill="none" stroke="#000" stroke-width="2"/></svg><strong id="'+p+'hzv">--</strong></div>'
+    +'<div class="att ins"><svg viewBox="0 0 150 150" aria-hidden="true"><circle cx="75" cy="75" r="73" class="bz"/><circle cx="75" cy="75" r="62" fill="#0f0d0a" stroke="#000" stroke-width="2"/>'+tk(27,52,60,'t1')+tk(9,46,60,'t2')+'<g class="tx"><text x="46" y="112">0</text><text x="33" y="62">60</text><text x="75" y="36">90</text><text x="117" y="62">120</text><text x="106" y="112">180</text></g><line id="'+p+'ndl" x1="75" y1="75" x2="123" y2="75" stroke="#ea580c" stroke-width="3.5" stroke-linecap="round" transform="rotate(135 75 75)"/><circle cx="75" cy="75" r="7" fill="#1c1915" stroke="#6b6252"/></svg><strong id="'+p+'spv">--</strong></div>';
+}
 function drawBall(cvs,c,sc){
   const w=cvs.clientWidth;if(!w)return;
+  if(SKIN!=='std'){drawBallSkin(c,w,sc);return}
   const H=sc.hud,R=w/2,k=R*(H?.88:.94),S=sc.S,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
   c.clearRect(0,0,w,w);
   c.strokeStyle=ring;c.lineWidth=1.4;c.globalAlpha=.55;
@@ -1776,6 +1902,7 @@ function drawBall(cvs,c,sc){
     c.textAlign='center';c.fillText('ヨー '+(H.yaw==null?'--':sgn(Math.abs(H.yaw)<.5?0:H.yaw,0)+'°/s'),R,w-8);
   }
 }
+skinApply();
 // ログのグラフ: 左右G / 前後G / 車速 / 減点 の4段
 function drawPanels(c,w,pts,full,cur,win){
   const H=84,TS=14,sel=gpSel(),NP=sel.length,n=pts.length,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),ball=css('--ball'),pc=css('--peak'),bg=css('--panel');
@@ -2075,7 +2202,7 @@ function vframe(dt){
   if(vg.clientWidth)drawPanels(vgx,vg.clientWidth,V.pts,true,V.i,V.z);
   const cp=V.cur[V.i];
   if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map);if(V.play&&!VM.map.getBounds().contains([cp.la,cp.lo]))VM.map.panTo([cp.la,cp.lo])}
-  {const q=k=>r[k]==null?null:r[k];attSet('v',V.bike?q(16):q(17),q(18),V.bike,r[2]>0.1)}$('vatt').hidden=r[17]==null&&r[16]==null;
+  {const q=k=>r[k]==null?null:r[k];attSet('v',V.bike?q(16):q(17),q(18),V.bike,r[2]>0.1,false,r[4])}$('vatt').hidden=r[17]==null&&r[16]==null;
   $('vr').textContent=tm(r[0])+' / '+tm(V.rows[n-1][0])+'　'+r[3].toFixed(2)+'G'+(r[4]==null?'':'　'+Math.round(r[4])+'km/h')+(r[8]==null?'':'　標高'+Math.round(r[8])+'m');
 }
 // ===== 採点 =====
@@ -2382,7 +2509,7 @@ function loop(now){
     {const A=axMax,f=(v,sg)=>(sg>0?'+':'-')+Math.abs(v).toFixed(2);
      $('gxp').textContent=f(A.xp,1);$('gxn').textContent=f(A.xn,-1);$('gyp').textContent=f(A.yp,1);$('gyn').textContent=f(A.yn,-1);$('gzp').textContent=f(A.zp,1);$('gzn').textContent=f(A.zn,-1)}
     $('alt').textContent=gps.alt==null?'--':Math.round(gps.alt);
-    attSet('',cfg.bike?bkD:atD&&atD.r,atD&&atD.p,!!cfg.bike,sg.y<-0.1,atD&&!atD.live);
+    attSet('',cfg.bike?bkD:atD&&atD.r,atD&&atD.p,!!cfg.bike,sg.y<-0.1,atD&&!atD.live,gps.sp);
     {const f=v=>v==null?'--':(Math.abs(v)<.5?'0':(v>0?'+':'')+v.toFixed(0));$('prt').textContent=f(pitD);$('rrt').textContent=f(rolD)}
     $('yaw').textContent=yawD==null?'--':(Math.abs(yawD)<.5?'0':(yawD>0?'+':'')+yawD.toFixed(0));
     {const f=v=>(Math.abs(v)<.05?0:v).toFixed(1);$('grd').textContent=slOn?(SL.by>0.0005?'+':'')+f(slPct(SL.by)):'--';$('cnt').textContent=bkD!=null?(bkD>=.5?'+':'')+bkD.toFixed(0):slOn?(SL.bx>0.0005?'+':'')+f(slPct(SL.bx)):'--'}
@@ -2398,7 +2525,7 @@ function loop(now){
       if(rec){const r=scoreResult(scorer);el.textContent=r?'採点中　ジャーク '+r.jerk+'　丸み '+r.round+'　（暫定 '+r.total+'点）':'採点中（加減速や旋回が少ないため集計中）'}
       scBike=!!cfg.bike;const ad=$('adv'),ar=rec?scoreResult(scorer):null;ad.hidden=!ar;if(ar){const l=adviceList(ar);ad.textContent='アドバイス：'+(l[0]||'滑らかに運転できています。この調子です。')}
     }
-    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn&&!cfg.bike?slPct(SL.bx):0,bk:bkD}});
+    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn&&!cfg.bike?slPct(SL.bx):0,bk:bkD,roll:cfg.bike?bkD:atD&&atD.r,pitch:atD&&atD.p}});if(SKIN==='a')ledSet(m/S);
   }
   if(!$('pl').hidden){
     if(gc.clientWidth)drawPanels(gx,gc.clientWidth,hist,false);
