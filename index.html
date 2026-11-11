@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.4.0 (2026-11-11) ラップ比較を再生画面のグラフに重ねて表示（比べる相手＝オレンジ／同じ色の点線、同じ地点どうしを重ねる）。グラフに「タイム差」の段を追加し、比べると選んだラップの範囲に拡大。
+                     グラフを拡大しているときは1本指で左右に動かせる（タップでカーソル移動）。設定画面のスクロールが裏の画面に取られないように
   2.3.0 (2026-11-11) ロール・ピッチ角を実際の傾き（路面＋車体）に近い値に: 勾配補正と同じ推定（ジャイロで追い、GPSの車速・ヨーレートで直す）から角度を出す。
                      加減速や旋回で車体が沈む・傾く分は含み、Gそのものが傾きとして混ざる分は除く。GPSがないときは加速度センサーの傾き（簡易）。
                      ログ: ロール角・ピッチ角は表示と同じ値、加速度センサーの傾きは別の列（ロール生値・ピッチ生値）に記録
@@ -225,7 +227,6 @@ button.on{border-color:var(--peak);color:var(--peak)}
 #lmap{height:280px;border-radius:10px;margin-top:8px;background:var(--panel)}
 #tmap{height:320px;border-radius:10px;margin-top:8px;background:var(--panel)}
 #tedw h3{font-size:1rem;margin:14px 0 4px}
-#lapc{display:block;width:100%;height:326px;border-radius:10px;margin-top:8px;background:var(--panel);touch-action:pan-y}
 .upd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:var(--panel);border-left:4px solid var(--ball);font-size:.88rem}
 .upd[hidden]{display:none}
 .cap{margin-top:16px;background:var(--panel);border-radius:10px;padding:10px 12px}
@@ -253,7 +254,10 @@ li small{display:block;color:var(--mut)}
 #vw{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5;padding-top:env(safe-area-inset-top,0px)}
 #vr{text-align:center;font-variant-numeric:tabular-nums;margin:4px 0}
 input[type=range]{width:100%}
-dialog{border:1px solid var(--ring);border-radius:16px;background:var(--panel);color:var(--fg);width:min(92vw,420px);padding:16px}
+dialog{border:1px solid var(--ring);border-radius:16px;background:var(--panel);color:var(--fg);width:min(92vw,420px);padding:16px;max-height:86vh;max-height:86dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+dialog input[type=range]{touch-action:pan-y}
+html.lock,html.lock body{overflow:hidden}
+html.lock body{position:fixed;left:0;right:0}
 dialog::backdrop{background:rgba(0,0,0,.5)}
 .set{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--ring)}
 .set input[type=checkbox]{width:22px;height:22px}
@@ -402,8 +406,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <ol id="vlpl" class="laps"></ol>
 <div id="vcmpw" hidden>
 <div class="set"><span>比べる相手</span><select id="vcmp" aria-label="比べる相手"></select></div>
-<canvas id="lapc" aria-label="ラップ比較グラフ"></canvas>
-<p class="mcap">横軸はラップ内の距離です。青＝選んだラップ、オレンジの点線＝比べる相手（地図にも点線で表示）。タイム差は、同じ地点を通過したときの時間の差で、上に行くほど遅れています。グラフをタップすると、その地点へカーソルが移動します。</p>
+<p class="mcap">比べる相手を選ぶと、上のグラフに重ねて表示します（オレンジ、または同じ色の点線）。同じ地点どうしを重ねるので、横軸の時刻は選んだラップのものです。「タイム差」の段は＋ほど遅れています。</p>
 </div>
 </div>
 <div id="vsc"></div>
@@ -450,7 +453,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.3.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.4.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -458,7 +461,7 @@ const camc=$('camc'),camcx=camc.getContext('2d');
 let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-const GP=[['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['bank','バンク角'],['tilt','ロール・ピッチ角'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
+const GP=[['dt','タイム差'],['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['bank','バンク角'],['tilt','ロール・ピッチ角'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
 let cfg={gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,tfc:.5,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);cfg.yfc=Math.min(10,Math.max(.5,+cfg.yfc||2));cfg.tfc=Math.min(2,Math.max(.1,+cfg.tfc||.5));if(!Array.isArray(cfg.gp))cfg.gp=['x','y','rot','sp'];cfg.gp=cfg.gp.filter(k=>GP.some(p=>p[0]===k));if(!cfg.gp.length)cfg.gp=['x','y','rot','sp'];if(cfg.lv!=='live')cfg.lv='saved';saveCfg()}catch(e){}
@@ -521,10 +524,16 @@ if(location.protocol.startsWith('http'))setTimeout(()=>checkUpdate(false),1500);
 $('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('slp').checked=!!cfg.slope;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;$('yfc').value=cfg.yfc;$('yfcv').textContent=cfg.yfc;
 $('gear').onclick=()=>{
   showLimStat();showOrbStat();showStor();
-  const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
+  const d=$('st');scrLock(true);d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
-$('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open')};
+$('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open');scrLock(false)};
+function scrLock(on){   // 設定を開いている間は裏の画面をスクロールさせない（iPhoneで裏が動くのを防ぐ）
+  const h=document.documentElement,b=document.body;
+  if(on){if(h.classList.contains('lock'))return;scrLock.y=scrollY;b.style.top=-scrLock.y+'px';h.classList.add('lock')}
+  else if(h.classList.contains('lock')){h.classList.remove('lock');b.style.top='';scrollTo(0,scrLock.y||0)}
+}
+$('st').addEventListener('close',()=>scrLock(false));
 $('snd').onchange=e=>{cfg.snd=e.target.checked;saveCfg()};
 cfg.pitch=cfg.pitch!==false;$('pit').checked=cfg.pitch;
 if(cfg.pmode!=='step')cfg.pmode='smooth';$('pmode').value=cfg.pmode;
@@ -1412,14 +1421,35 @@ function renderVLap(){
   $('vcmpw').hidden=!R.laps.length;
   lapCmpBuild();
 }
+function rowsPts(rows,pj){   // ログの行 → グラフ用の点
+  const nv=v=>v==null?null:v;
+  return rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pr:nv(r[14]),rr:nv(r[15]),bk:nv(r[16]),tr:nv(r[17]),tp:nv(r[18]),pj:pj&&pj[i]||0,ev:null}));
+}
+function lapCmpOverlay(S){   // 比べる相手の値を、選んだラップの各行に「同じ地点（ラップ内の距離）」でそろえて並べる。dt＝タイム差（＋＝遅い）
+  V.cmp=null;const A=V.lapA,CA=V.cmpA,CB=V.cmpB;if(!A||!CA||!CB||!CB.d.length||!S)return;
+  const D=V.lapR.D,pb=S===V.L?V.pts:rowsPts(S.rows),out=new Array(V.rows.length).fill(null),lenB=CB.d[CB.d.length-1];
+  let i0=null,i1=null;
+  for(let i=0;i<V.rows.length;i++){
+    const t=V.rows[i][0];if(t<A.t0||t>A.t1||D[i]==null)continue;
+    if(i0==null)i0=i;i1=i;
+    const d=D[i]-A.d0;if(d<0||d>lenB)continue;
+    const k=Math.min(CB.d.length-1,Math.max(0,Math.round(d/5))),j=CB.ri[k];if(j==null||!pb[j])continue;
+    const f=(d-CB.d[Math.max(0,Math.floor(d/5))])/5,k0=Math.min(CB.t.length-1,Math.floor(d/5)),k1=Math.min(CB.t.length-1,k0+1),tb=CB.t[k0]+(CB.t[k1]-CB.t[k0])*Math.max(0,Math.min(1,f));
+    out[i]=Object.assign({},pb[j],{dt:(t-A.t0)-tb});
+  }
+  V.cmp=out;
+  if(i0!=null&&i1>i0){const pad=Math.round((i1-i0)*.03);if(V.i<i0||V.i>i1){vseek(i0);V.vt=V.rows[i0][0];$('vk').value=i0;vSync()}vgSet(i0-pad,i1-i0+2*pad)}   // 選んだラップの範囲に拡大（カーソルもラップの頭へ）
+  if(!cfg.gp.includes('dt')){cfg.gp.unshift('dt');saveCfg();gpUi()}
+}
 function lapCmpBuild(){
   V.cmpA=V.cmpB=null;
   if(V.lapA&&V.lapR){V.cmpA=lapSeries(V.rows,V.lapR.D,V.lapA)}
   const k=$('vcmp').value;V.lapBKey=k||null;
-  if(k&&V.lapT){const [id,n]=k.split('|'),S=saved.find(s=>String(s.id)===id)||(String(V.L.id)===id?V.L:null);if(S){const R=lapsOfLog(S,V.lapT),l=R.laps.find(x=>x.n===+n);if(l)V.cmpB=lapSeries(S.rows,R.D,l)}}
+  let SB=null;if(k&&V.lapT){const [id,n]=k.split('|'),S=saved.find(s=>String(s.id)===id)||(String(V.L.id)===id?V.L:null);if(S){const R=lapsOfLog(S,V.lapT),l=R.laps.find(x=>x.n===+n);if(l){V.cmpB=lapSeries(S.rows,R.D,l);SB=S}}}
+  lapCmpOverlay(SB);
   if(VM){if(!VM.cmp)VM.cmp=L.layerGroup().addTo(VM.map);VM.cmp.clearLayers();
     if(V.cmpB&&V.cmpB.ll.length>1)L.polyline(V.cmpB.ll,{pane:'mrk',color:'#f97316',weight:4,dashArray:'6 6',opacity:.95}).addTo(VM.cmp);}
-  drawSF();V.lapDrawI=-2;
+  drawSF();
 }
 function vLapSelect(n){
   if(!V||!V.lapR)return;const l=V.lapR.laps.find(x=>x.n===n);if(!l)return;
@@ -1439,48 +1469,6 @@ $('vtrset').onclick=()=>{
 };
 function vAutoLap(){if(V&&V.lapT){const R=lapsOfLog(V.L,V.lapT);if(R.laps.length)V.lapA=R.laps.reduce((a,b)=>b.time<a.time?b:a)}}
 // 比較グラフ（横軸＝ラップ内の距離）: タイム差、車速、左右G、前後G。青＝選んだラップ、オレンジ＝比べる相手
-function drawLapCmp(){
-  const c=$('lapc');if(!c||c.closest('[hidden]'))return;
-  const w=c.clientWidth;if(!w)return;
-  const H=78,NP=4,TS=14,dpr=devicePixelRatio||1;if(c.height!==Math.round((H*NP+TS)*dpr)||c.width!==Math.round(w*dpr))fit(c,H*NP+TS);
-  const x=c.getContext('2d'),A=V.cmpA,B=V.cmpB,fg=css('--fg'),mut=css('--mut'),ring=css('--ring'),bg=css('--panel'),ca=css('--ball'),cb='#f97316';
-  x.clearRect(0,0,w,H*NP+TS);
-  if(!A||!A.d.length){x.fillStyle=mut;x.font='12px system-ui';x.textAlign='center';x.fillText('ラップを選ぶと、距離をそろえたグラフが出ます',w/2,40);return}
-  const len=Math.max(A.d[A.d.length-1],B&&B.d.length?B.d[B.d.length-1]:0)||1,px=d=>d/len*w;
-  const st=[50,100,200,250,500,1000,2000].find(s=>len/s<=6)||5000;
-  let ci=null;if(V.lapR){const D=V.lapR.D[V.i];if(D!=null){const dd=D-V.lapA.d0;if(dd>=0&&dd<=len)ci=Math.round(dd/5)}}
-  const halo=(t,X,Y)=>{x.lineWidth=3;x.strokeStyle=bg;x.strokeText(t,X,Y);x.fillText(t,X,Y)};
-  const panel=(k,label,val,fn)=>{
-    const top=k*H;x.save();x.beginPath();x.rect(0,top,w,H);x.clip();
-    x.strokeStyle=ring;x.lineWidth=1;x.globalAlpha=.55;for(let d=st;d<len;d+=st){const X=Math.round(px(d))+.5;x.beginPath();x.moveTo(X,top+15);x.lineTo(X,top+H);x.stroke()}x.globalAlpha=1;
-    if(k<NP-1){x.beginPath();x.moveTo(0,top+H-.5);x.lineTo(w,top+H-.5);x.stroke()}
-    fn(top);
-    x.font='10px system-ui';x.textAlign='left';x.fillStyle=mut;x.lineJoin='round';halo(label,4,top+11);
-    if(val){x.font='600 12px system-ui';x.textAlign='right';x.fillStyle=fg;halo(val,w-4,top+12)}
-    x.restore();
-  };
-  const ln=(arr,col,mid,sc,dash)=>{x.strokeStyle=col;x.lineWidth=1.6;x.setLineDash(dash?[5,4]:[]);x.beginPath();let on=false;arr.forEach((v,i)=>{if(v==null){on=false;return}const X=px(i*5),Y=mid-v*sc;on?x.lineTo(X,Y):x.moveTo(X,Y);on=true});x.stroke();x.setLineDash([])};
-  const grid=(y,l,dash)=>{x.strokeStyle=ring;x.lineWidth=1;if(dash)x.setLineDash([3,3]);x.beginPath();x.moveTo(0,Math.round(y)+.5);x.lineTo(w,Math.round(y)+.5);x.stroke();x.setLineDash([]);x.font='9px system-ui';x.textAlign='left';x.fillStyle=mut;halo(l,3,y+3)};
-  // タイム差 = A − B（＋＝Aが遅い）
-  const dl=B?A.d.map((d,i)=>{const bt=interpT(B.d.map((dd,j)=>({d:dd,t:B.t[j]})),d);return bt==null?null:A.t[i]-bt}):null;
-  const dm=dl?Math.max(.5,...dl.filter(v=>v!=null).map(Math.abs)):1,dr=[.5,1,2,5,10,20,60].find(r=>r>=dm)||60;
-  panel(0,B?'タイム差（＋＝遅い）':'タイム差（比べる相手を選んでください）',dl&&ci!=null&&dl[ci]!=null?fmtDelta(dl[ci])+' 秒':null,top=>{const mid=top+H/2+6,sc=(H/2-12)/dr;[dr,0,-dr].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'−')+Math.abs(v),v===0));if(dl)ln(dl,ca,mid,sc)});
-  const smax=Math.max(40,...A.sp.filter(v=>v!=null),...(B?B.sp.filter(v=>v!=null):[0])),rs=Math.ceil(smax*1.1/20)*20,ss=rs<=60?20:rs<=120?40:rs<=200?50:100;
-  panel(1,'車速 km/h',ci!=null&&A.sp[ci]!=null?Math.round(A.sp[ci])+(B&&B.sp[ci]!=null?' / '+Math.round(B.sp[ci]):'')+' km/h':null,top=>{const base=top+H-6,sc=(H-24)/rs;for(let v=0;v<=rs;v+=ss)grid(base-v*sc,String(v));if(B)ln(B.sp,cb,base,sc,true);ln(A.sp,ca,base,sc)});
-  const gr=(a,b)=>{const m=Math.max(.3,...a.map(Math.abs),...(b||[]).map(Math.abs));return[.3,.5,.8,1.2,2].find(r=>r>=m*1.1)||2};
-  [[2,'左右G（左＋）','x'],[3,'前後G（加速＋）','y']].forEach(([k,lab,key])=>{const r=gr(A[key],B&&B[key]);panel(k,lab,ci!=null&&A[key][ci]!=null?(A[key][ci]>0?'+':'')+A[key][ci].toFixed(2)+(B&&B[key][ci]!=null?' / '+(B[key][ci]>0?'+':'')+B[key][ci].toFixed(2):''):null,top=>{const mid=top+H/2+6,sc=(H/2-12)/r;[r,0,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'−')+Math.abs(v),v===0));if(B)ln(B[key],cb,mid,sc,true);ln(A[key],ca,mid,sc)})});
-  x.fillStyle=mut;x.font='9px system-ui';x.textAlign='center';for(let d=st;d<len;d+=st)x.fillText(d+'m',px(d),H*NP+TS-3);
-  if(V.lapA&&V.lapA.sd&&V.lapA.sd.length){   // セクションの境目（紫の点線）
-    x.strokeStyle='#8b5cf6';x.lineWidth=1.2;x.setLineDash([4,3]);x.fillStyle='#8b5cf6';x.font='600 10px system-ui';x.textAlign='left';
-    V.lapA.sd.forEach((d,k)=>{if(d==null)return;const X=Math.round(px(d))+.5;x.beginPath();x.moveTo(X,0);x.lineTo(X,H*NP);x.stroke();x.fillText('S'+(k+2),X+3,H*NP+TS-3)});
-    x.setLineDash([]);
-  }
-  if(ci!=null){x.strokeStyle=fg;x.lineWidth=1.5;x.beginPath();x.moveTo(px(ci*5),0);x.lineTo(px(ci*5),H*NP);x.stroke()}
-}
-$('lapc').addEventListener('pointerdown',e=>{   // タップした距離へカーソルを移動
-  if(!V||!V.cmpA||!V.cmpA.d.length)return;const c=$('lapc'),r=c.getBoundingClientRect(),A=V.cmpA,len=Math.max(A.d[A.d.length-1],V.cmpB&&V.cmpB.d.length?V.cmpB.d[V.cmpB.d.length-1]:0)||1;
-  const k=Math.max(0,Math.min(A.ri.length-1,Math.round((e.clientX-r.left)/r.width*len/5))),i=A.ri[k];vseek(i);V.vt=V.rows[i][0];$('vk').value=i;vSync();
-});
 // gps
 function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null,alt:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null;curHdg=null;hdgRef=null;LP.prev=null}
 function startGps(){
@@ -1826,13 +1814,17 @@ function drawPanels(c,w,pts,full,cur,win){
     if(val!=null){c.font='600 12px system-ui';c.textAlign='right';c.fillStyle=fg;halo(val,w-4,top+12)}
     c.restore();
   };
+  const CM=full&&V&&V.cmp&&V.pts===pts?V.cmp:null,CB='#f97316';   // ラップ比較: 比べる相手（同じ地点どうし）
   const line=(key,zero,scale,col)=>{
+    if(CM){c.strokeStyle=col||CB;c.lineWidth=1.5;c.setLineDash([5,4]);c.beginPath();let on=false;
+      for(let i=i0;i<=i1;i++){const q=CM[i],v=q&&q[key];if(v==null){on=false;continue}const Y=zero-v*scale;on?c.lineTo(px(i),Y):c.moveTo(px(i),Y);on=true}
+      c.stroke();c.setLineDash([])}
     c.strokeStyle=col||ball;c.lineWidth=1.6;c.beginPath();let on=false;
     for(let i=i0;i<=i1;i++){const v=pts[i][key];if(v==null){on=false;continue}const Y=zero-v*scale;on?c.lineTo(px(i),Y):c.moveTo(px(i),Y);on=true}
     c.stroke();
   };
-  const gv=v=>v==null?'--':(v>0?'+':'')+v.toFixed(2)+' G';
-  const gPanel=(k,key,label,r)=>panel(k,label,cp?gv(cp[key]):null,top=>{
+  const gv=v=>v==null?'--':(v>0?'+':'')+v.toFixed(2)+' G',cq=CM&&ci!=null?CM[ci]:null;
+  const gPanel=(k,key,label,r)=>panel(k,label,cp?gv(cp[key])+(cq&&cq[key]!=null?' / '+(cq[key]>0?'+':'')+cq[key].toFixed(2):''):null,top=>{
     const mid=top+H/2+6,sc=(H/2-12)/r;
     [r,r/2,0,-r/2,-r].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+(+v.toFixed(2)),v===0));
     line(key,mid,sc);
@@ -1855,6 +1847,15 @@ function drawPanels(c,w,pts,full,cur,win){
     const mid=top+H/2+6,sc=(H/2-12)/rbk;[rbk,0,-rbk].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));line('bk',mid,sc);
   });
   let tr=0;pts.forEach(p=>{if(p.tr!=null)tr=Math.max(tr,Math.abs(p.tr));if(p.tp!=null)tr=Math.max(tr,Math.abs(p.tp))});const rtl=[5,10,20,30].find(r=>r>=tr*1.05)||45;
+  if(sel.includes('dt')){
+    let dm=.5;if(CM)for(let i=i0;i<=i1;i++){const q=CM[i];if(q&&q.dt!=null)dm=Math.max(dm,Math.abs(q.dt))}const dr=[.5,1,2,5,10,20,60].find(r=>r>=dm*1.05)||120;
+    panel('dt','タイム差 秒（＋＝遅い）',cq&&cq.dt!=null?(cq.dt>0?'+':'')+cq.dt.toFixed(2)+' 秒':null,top=>{
+      if(!CM){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('ラップの「比べる相手」を選ぶと表示します',w/2,top+H/2+6);return}
+      const mid=top+H/2+6,sc=(H/2-12)/dr;[dr,0,-dr].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'−')+Math.abs(v),v===0));
+      c.strokeStyle=ball;c.lineWidth=1.8;c.beginPath();let on=false;
+      for(let i=i0;i<=i1;i++){const q=CM[i];if(!q||q.dt==null){on=false;continue}const X=px(i),Y=mid-q.dt*sc;on?c.lineTo(X,Y):c.moveTo(X,Y);on=true}c.stroke();
+    });
+  }
   panel('tilt','ロール・ピッチ角 °（実際の傾き）',cp?'R '+(cp.tr==null?'--':(cp.tr>0?'+':'')+cp.tr.toFixed(1))+'  P '+(cp.tp==null?'--':(cp.tp>0?'+':'')+cp.tp.toFixed(1)):null,top=>{
     if(!pts.some(p=>p.tr!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('ロール・ピッチ角のデータがありません（v2.2.0より前の記録）',w/2,top+H/2+6);return}
     const mid=top+H/2+6,sc=(H/2-12)/rtl;[rtl,0,-rtl].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));
@@ -1943,7 +1944,7 @@ function openL(L){
     cur.push(last);
   });
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
-  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pr:nv(r[14]),rr:nv(r[15]),bk:nv(r[16]),tr:nv(r[17]),tp:nv(r[18]),pj:pen.pj[i]||0,ev:null}));
+  const pts=rowsPts(rows,pen.pj);
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
   vClearVid();
   V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null,z:{a:0,b:rows.length-1}};
@@ -2013,11 +2014,12 @@ function vgFollow(){const z=V.z,s=z.b-z.a;if(V.i>z.b||V.i<z.a)vgSet(V.i-s*.1,s)}
 function vgZoomUi(){
   if(!V)return;const n=V.rows.length-1,z=V.z,full=z.a<=0&&z.b>=n,t=i=>V.rows[Math.round(i)][0];
   $('vgall').hidden=full;
-  $('vgz').textContent=(full?'':'表示 '+fmtT(t(z.a))+'〜'+fmtT(t(z.b))+'（'+Math.round(t(z.b)-t(z.a))+'秒）　')+'ピンチで拡大・縮小　タップでカーソル移動';
+  $('vgz').textContent=(full?'':'表示 '+fmtT(t(z.a))+'〜'+fmtT(t(z.b))+'（'+Math.round(t(z.b)-t(z.a))+'秒）　')+(full?'ピンチで拡大・縮小　タップでカーソル移動':'1本指で左右に移動　ピンチで拡大・縮小　タップでカーソル移動');
 }
 vg.addEventListener('pointerdown',e=>{
   if(!V)return;gp.set(e.pointerId,vgX(e));try{vg.setPointerCapture(e.pointerId)}catch(err){}
-  if(gp.size===1){gpLock=false;V.gpPrev={i:V.i,t:performance.now()};vgCur(vgX(e))}
+  if(gp.size===1){gpLock=false;V.gpPrev={i:V.i,t:performance.now()};const zm=V.z.a>0||V.z.b<V.rows.length-1;
+    V.g1={x:vgX(e),a:V.z.a,s:V.z.b-V.z.a,zm,pan:false};if(!zm)vgCur(vgX(e))}   // 拡大中は1本指で左右に動かす（動かさずに離したらカーソル移動）
   else if(gp.size===2){
     const pv=V.gpPrev;if(pv&&pv.i>=0&&performance.now()-pv.t<400){vseek(pv.i);V.vt=V.rows[pv.i][0];$('vk').value=pv.i;vSync()}   // ピンチの1本目でカーソルが動いた分を戻す
     const [x1,x2]=[...gp.values()],w=vg.clientWidth,s=V.z.b-V.z.a;
@@ -2027,9 +2029,10 @@ vg.addEventListener('pointerdown',e=>{
 vg.addEventListener('pointermove',e=>{
   if(!V||!gp.has(e.pointerId))return;gp.set(e.pointerId,vgX(e));
   if(gpz&&gp.size>=2){const [x1,x2]=[...gp.values()],s=gpz.s*gpz.d/Math.max(20,Math.abs(x1-x2));vgSet(gpz.im-(x1+x2)/2/vg.clientWidth*s,s)}
-  else if(gp.size===1&&!gpLock)vgCur(vgX(e));
+  else if(gp.size===1&&!gpLock&&V.g1){const g=V.g1,dx=vgX(e)-g.x;
+    if(g.zm){if(!g.pan&&Math.abs(dx)>6)g.pan=true;if(g.pan)vgSet(g.a-dx/vg.clientWidth*g.s,g.s)}else vgCur(vgX(e))}
 });
-['pointerup','pointercancel','lostpointercapture'].forEach(n=>vg.addEventListener(n,e=>{gp.delete(e.pointerId);if(gp.size<2)gpz=null;if(!gp.size)gpLock=false}));
+['pointerup','pointercancel','lostpointercapture'].forEach(n=>vg.addEventListener(n,e=>{if(n==='pointerup'&&gp.size===1&&V&&V.g1&&V.g1.zm&&!V.g1.pan&&!gpLock)vgCur(vgX(e));if(gp.size===1&&V)V.g1=null;gp.delete(e.pointerId);if(gp.size<2)gpz=null;if(!gp.size)gpLock=false}));
 vg.addEventListener('wheel',e=>{   // パソコン: ホイール／トラックパッドで拡大・縮小
   if(!V)return;e.preventDefault();
   const x=vgX(e),w=vg.clientWidth,s=V.z.b-V.z.a,im=V.z.a+x/w*s,ns=s*Math.exp(e.deltaY*.002);
@@ -2070,7 +2073,6 @@ function vframe(dt){
   drawBall(vc,vcx,{x:vX(r),y:-vY(r),S:nice(V.peak),peak:V.peak,env:V.env,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:vX(q),y:-vY(q)}))});
   if(!gpz)vgFollow();
   if(vg.clientWidth)drawPanels(vgx,vg.clientWidth,V.pts,true,V.i,V.z);
-  if(V.lapDrawI!==V.i){V.lapDrawI=V.i;drawLapCmp()}
   const cp=V.cur[V.i];
   if(VM&&cp&&cp!==V.mk){V.mk=cp;VM.cur.setLatLng([cp.la,cp.lo]).addTo(VM.map);if(V.play&&!VM.map.getBounds().contains([cp.la,cp.lo]))VM.map.panTo([cp.la,cp.lo])}
   {const q=k=>r[k]==null?null:r[k];attSet('v',V.bike?q(16):q(17),q(18),V.bike,r[2]>0.1)}$('vatt').hidden=r[17]==null&&r[16]==null;
