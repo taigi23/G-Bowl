@@ -4,6 +4,9 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  1.28.0 (2026-11-11) ヨーレートにローパス（設定「ヨーレートのLPF」、初期値2Hz）。勾配補正の精度を上げる: 傾きの変化をジャイロのピッチ・ロールで毎フレーム追い、
+                     GPSとの差でゆっくり直す。GPSの車速の遅れの分だけ区間をずらして比べる（遅れは自動で合わせる）。揺れ・低速では止めずに重みを下げて更新。
+                     左右反転・前後反転を切り替えても勾配・カントが引き継がれる。修正: ラップ比較のグラフをタップしても、その位置へ移動しなかった
   1.27.1 (2026-11-11) 修正: 0点合わせの直後、表示が0に戻る途中の値で最大Gが更新されていた（合わせた瞬間に表示を0にし、0.5秒は最大値を更新しない）
   1.27.0 (2026-11-10) 表示の符号をそろえる: 左右Gとヨーレートは左旋回が＋、前後Gは加速が＋（数値・最大G・グラフ・ラップ比較・CSV）。
                      修正: ログを保存するときに上下G・標高・ヨーレート・勾配などの列が落ちていた。ジャークの最大値と減点の棒が記録されていなかった
@@ -303,8 +306,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set"><span>勾配補正 <small>坂道やカント（路面の横の傾き）で出るGを、GPSの車速とジャイロから推定して差し引く</small></span><input type="checkbox" id="slp" aria-label="勾配補正"></div>
-<p class="mcap" id="slpst">勾配は「上り＋」、カントは「右下がり＋」です。推定は10km/h以上で一定に走っているときと、止まっているときに進み、数秒かけて追いつきます。</p>
+<p class="mcap" id="slpst">勾配は「上り＋」、カントは「右下がり＋」です。傾きの変化はジャイロですぐに追い、GPSの車速・ヨーレートとの差でゆっくり直します。GPSが途切れている間は直前の値を保ちます。</p>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
+<div class="set"><span>ヨーレートのLPF <b><span id="yfcv">2</span> Hz</b></span><input type="range" id="yfc" min="0.5" max="10" step="0.5" aria-label="ヨーレートのカットオフ周波数"></div>
 <div class="set"><span>制限速度の接続テスト</span><button id="ltest">テスト</button></div>
 <p class="mcap" id="limst"></p>
 <p class="mcap">制限の欄：「…」取得中　「×」取得エラー　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
@@ -321,7 +325,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='1.27.1',APP_DATE='2026-11-11';
+const APP_VERSION='1.28.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -329,9 +333,9 @@ const camc=$('camc'),camcx=camc.getContext('2d');
 let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-let cfg={fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,v:4};
+let cfg={fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
-try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);saveCfg()}catch(e){}
+try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);cfg.yfc=Math.min(10,Math.max(.5,+cfg.yfc||2));saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
 let axMax={xp:0,xn:0,yp:0,yn:0,zp:0,zn:0},raw={x:0,y:0,z:0},gf=null,basis=null,calN=0,sg={x:0,y:0,z:0},peak=0,trail=[],sensor=false,S=.4;
 let curM=0,lastT=0,trk=[],env=new Array(72).fill(0),hist=[],N=300,lastS=0,rec=false,log=[],t0=0;
@@ -377,7 +381,7 @@ const doUpdate=()=>{
 $('updb').onclick=doUpdate;$('updn').onclick=doUpdate;
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-updT>600000)checkUpdate(false)});
 if(location.protocol.startsWith('http'))setTimeout(()=>checkUpdate(false),1500);
-$('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('slp').checked=!!cfg.slope;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;
+$('snd').checked=cfg.snd;$('over').checked=cfg.over;cfg.margin=Math.min(50,Math.max(0,+cfg.margin||0));$('mg').value=cfg.margin;$('mgv').textContent=cfg.margin;$('fx').checked=cfg.fx;$('slp').checked=!!cfg.slope;$('fy').checked=cfg.fy;$('thr').value=String(cfg.thr);$('thrv').textContent=cfg.thr.toFixed(1);$('fc').value=cfg.fc;$('fcv').textContent=cfg.fc;$('yfc').value=cfg.yfc;$('yfcv').textContent=cfg.yfc;
 $('gear').onclick=()=>{
   showLimStat();showOrbStat();showStor();
   const d=$('st');d.showModal?d.showModal():d.setAttribute('open','');
@@ -425,6 +429,7 @@ function mirror(mx,my){
   env=ne;
 }
 $('fc').oninput=e=>{cfg.fc=+e.target.value;$('fcv').textContent=cfg.fc;saveCfg()};
+$('yfc').oninput=e=>{cfg.yfc=+e.target.value;$('yfcv').textContent=cfg.yfc;saveCfg()};
 // sensor
 // 3軸センサー: 端末ごとの符号の違い（iPhoneは逆向き）をそろえ、重力に対して上向きを＋とする向きで扱う
 function onMotion(e){
@@ -433,7 +438,12 @@ function onMotion(e){
   const sg_=ios?-1:1;
   raw.x=sg_*a.x/9.81;raw.y=sg_*a.y/9.81;raw.z=sg_*(a.z||0)/9.81;
   const rr=e.rotationRate;   // ジャイロ（°/s）。「上」の向きのまわりの回転＝ヨーレート（反時計回り＝左旋回が＋）
-  if(rr&&rr.alpha!=null&&basis){const u=basis.u;yawRaw=(rr.beta||0)*u.x+(rr.gamma||0)*u.y+rr.alpha*u.z}
+  if(rr&&rr.alpha!=null&&basis){
+    const B=basis,wx=rr.beta||0,wy=rr.gamma||0,wz=rr.alpha,u=B.u;yawRaw=wx*u.x+wy*u.y+wz*u.z;
+    const t=performance.now(),dt=Math.min(Math.max((t-gyT)/1000,.001),.1);gyT=t;   // ヨーレートのローパス（1次を2段。2段で設定のカットオフになるよう1段ぶんを1.554倍にする）
+    if(yawF==null)yawF1=yawF=yawRaw;else{const al=dt/(1/(2*Math.PI*cfg.yfc*1.554)+dt);yawF1+=(yawRaw-yawF1)*al;yawF+=(yawF1-yawF)*al}
+    gyA.ex+=wx*B.ex.x+wy*B.ex.y+wz*B.ex.z;gyA.fw+=wx*B.fw.x+wy*B.fw.y+wz*B.fw.z;gyA.u+=yawRaw;gyA.n++;   // 勾配補正用（ピッチ・ロール・ヨーの角速度）
+  }
   if(!gf)gf={x:raw.x,y:raw.y,z:raw.z};else{gf.x+=(raw.x-gf.x)*.05;gf.y+=(raw.y-gf.y)*.05;gf.z+=(raw.z-gf.z)*.05}   // 約0.3秒の平均（0点合わせ用）
   if(!sensor){sensor=true;calN=0}
   if(++calN===45)autoCal();   // 開始から約0.7秒後に置き方を確認
@@ -488,7 +498,7 @@ async function start(){
   }catch(e){msg('センサーを開始できませんでした。');return false}
 }
 function setRun(on){running=on;const b=$('start');b.textContent=on?'停止':'開始';b.classList.toggle('p',!on);b.classList.toggle('on',on)}
-function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
+function stopAll(){removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;yawRaw=yawF=yawF1=null;gyA.ex=gyA.fw=gyA.u=gyA.n=0;gyA.l=[0,0,0];try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
 if(cfg.g0)basis=makeBasis(cfg.g0);
 $('start').onclick=async()=>{
   if(running){stopAll();return}
@@ -1168,7 +1178,7 @@ function lapSeries(rows,D,lap){   // 5mごとに、経過時間・車速・G・�
     const dd=lap.d0+s;while(k<idx.length-2&&D[idx[k+1]]<dd)k++;
     const i=idx[k],j=idx[k+1],di=D[i],dj=D[j],f=dj>di?Math.min(1,Math.max(0,(dd-di)/(dj-di))):0,a=rows[i],b=rows[j];
     const mix=(p,q)=>p==null?q:q==null?p:p+(q-p)*f;
-    o.d.push(s);o.t.push(mix(a[0],b[0])-lap.t0);o.sp.push(mix(a[4],b[4]));o.x.push(mix(a[1],b[1]));o.y.push(-mix(a[2],b[2]));   // 表示は加速が＋o.ri.push(f<.5?i:j);
+    o.d.push(s);o.t.push(mix(a[0],b[0])-lap.t0);o.sp.push(mix(a[4],b[4]));o.x.push(mix(a[1],b[1]));o.y.push(-mix(a[2],b[2]));o.ri.push(f<.5?i:j);   // 表示は加速が＋
     if(a[5]!=null)o.ll.push([a[5],a[6]]);
   }
   return o;
@@ -1966,44 +1976,104 @@ function scoreHtml(sc){
     +adviceHtml(sc)
     +'<p class="mcap">路面や振動などの速い揺れ（約2Hzより速いもの）はノイズとして採点から除外しています（ノイズ量 '+sc.noise+' G/s）。評価した運転操作の時間：'+sc.act+'秒</p></div>';
 }
-// ===== 勾配補正: 本当の加速度（前後＝GPSの車速の変化、左右＝車速×ヨーレート）とセンサーの差のうち、ゆっくり変わる分を勾配・カントとみなす =====
-let yawRaw=null,sgR={x:0,y:0},maxHold=0;
-const SL={bx:0,by:0,xsg:0,ysg:0,yb:0,g:null,W:null,ok:false};
-function slReset(all){SL.bx=0;SL.by=0;SL.ok=false;SL.g=null;SL.W=null;if(all){SL.xsg=0;SL.ysg=0}}
-const slSy=()=>SL.ysg<-0.3?-1:1,slGs=()=>SL.xsg<-0.3?-1:1;   // 向きの確認（前後Gの符号・ジャイロの符号）
-function yawLeft(){return yawRaw==null?null:(yawRaw-SL.yb)*slGs()}   // 左旋回＋（°/s）
-function slStep(tx,ty,dt){
-  const sp=gps.sp;
+// ===== 勾配補正: 本当の加速度（前後＝GPSの車速の変化、左右＝車速×ヨーレート）とセンサーの差を、車の傾き（勾配・カント）とみなす =====
+// 傾きの速い変化はジャイロ（ピッチ・ロールの角速度）で毎フレーム追い、GPSとの差でゆっくり直す（カルマンフィルタ）。
+// GPSの車速はセンサーより遅れて届くので、センサーの値をためておき、遅れの分だけ前の区間と比べる（遅れは走りながら自動で合わせる）。
+// SL.a・SL.b は「0点合わせのときの上向き」がスマホの右・前へどれだけ傾いたか（sin）。左右反転・前後反転の設定とは無関係に持つ
+let yawRaw=null,yawF=null,yawF1=null,gyT=0,sgR={x:0,y:0},maxHold=0;
+const gyA={ex:0,fw:0,u:0,n:0,l:[0,0,0]};   // ジャイロの合計（描画フレームの間の平均をとる）と直前の平均（°/s）
+const SLT=[0,.25,.5,.75,1,1.25,1.5];   // GPSの車速の遅れの候補（秒）
+const SL={a:0,b:0,bx:0,by:0,xsg:0,ysg:0,yb:0,g:null,ok:false,h:1,hc:.5,hn:0,tj:2,E:SLT.map(()=>0),En:0};
+function slReset(all){
+  SL.a=SL.b=SL.bx=SL.by=0;SL.ok=false;SL.g=null;SL.buf=[];SL.c=[0,0,0,0,0,0,0,0,0,0];SL.Ga=SL.Gb=0;SL.ba=SL.bb=0;
+  SL.Pa=[.01,0,2.5e-5];SL.Pb=[.01,0,2.5e-5];SL.tM=-1e9;SL.zp=SL.lp=null;
+  if(all){SL.xsg=0;SL.ysg=0}
+}
+slReset(true);
+const sLon=()=>SL.ysg<-0.3?-1:1,sLat=()=>SL.xsg<-0.3?-1:1;   // スマホの前・右が車の前・右と同じ向きか（走りながら確認）
+const slSy=()=>sLon()*(cfg.fy?-1:1),slGs=()=>sLat()*(cfg.fx?-1:1);   // 表示の向きに直した符号（前後G・ヨーレート）
+function yawLeft(){return yawF==null?null:(yawF-SL.yb)*slGs()}   // 左旋回＋（°/s）。ローパスをかけた値
+function slWin(t0,t1){   // ためてある値の、時刻 t0〜t1（ms）の平均
+  const B=SL.buf;let i=B.length-1;if(i<1||B[0][0]>t0)return null;
+  while(i>0&&B[i][0]>t1)i--;let j=i;while(j>0&&B[j][0]>t0)j--;
+  const p=B[i],q=B[j],T=p[1]-q[1];if(T<0.3||T<(t1-t0)*.0007)return null;
+  const m=k=>(p[k]-q[k])/T;
+  return{la:m(2),lo:m(3),la2:m(4),lo2:m(5),w:m(6),w2:m(7),lw:m(8),ga:m(9),gb:m(10)};
+}
+function slKf(P,y,R){const S=P[0]+R,k0=P[0]/S,k1=P[1]/S;P[2]-=k1*P[1];P[1]*=1-k0;P[0]*=1-k0;return[k0*y,k1*y]}   // 傾きとジャイロのずれを直す量
+function slH(dz,dg,R){   // ジャイロの回転の向きの確認: GPS側の傾きの変化とジャイロの変化が逆向きの状態が続いたら符号を入れ替える
+  if(Math.abs(dg)<.004)return;
+  const wt=Math.min(1,dg*dg/(2*R));SL.hc+=(Math.max(-1.5,Math.min(1.5,dz/dg))-SL.hc)*.15*wt;SL.hn+=wt;
+  if(SL.hn>4&&SL.hc<-.4){SL.h=-SL.h;SL.hc=.5;SL.hn=0}
+}
+function slStep(lat,lon,dt,now){   // lat・lon＝0点の重力を引いたGの、スマホの右・前の成分
+  const sp=gps.sp,D=Math.PI/180,cl=v=>Math.max(-.3,Math.min(.3,v)),G=gyA;
+  if(G.n){G.l=[G.ex/G.n,G.fw/G.n,G.u/G.n];G.ex=G.fw=G.u=G.n=0}
   if(yawRaw!=null&&sp!=null&&sp<1&&Math.abs(yawRaw-SL.yb)<5)SL.yb+=(yawRaw-SL.yb)*Math.min(1,dt/5);   // 止まっている間にジャイロのずれを覚える
-  const W=SL.W||(SL.W={T:0,x:0,y:0,x2:0,y2:0,w:0,wn:0});
-  W.T+=dt;W.x+=tx*dt;W.y+=ty*dt;W.x2+=tx*tx*dt;W.y2+=ty*ty*dt;
-  if(yawRaw!=null&&sp!=null){W.w+=(sp/3.6)*((yawRaw-SL.yb)*Math.PI/180)/9.81*dt;W.wn+=dt}
-  if(gps===SL.g)return;   // GPSの更新ごとに1回評価
-  const g0=SL.g;SL.g=gps;SL.W=null;
+  const wu=yawRaw==null?0:(G.l[2]-SL.yb)*D,live=now-SL.tM<3000;
+  if(live){   // GPSで直せている間だけジャイロで傾きを進める（途切れたら直前の値を保つ）。ヨーで向きが変わると勾配とカントが入れ替わる分も含める
+    const ra=SL.h*(-G.l[1]*D+wu*SL.b)-SL.ba,rb=SL.h*(G.l[0]*D-wu*SL.a)-SL.bb;
+    SL.a=cl(SL.a+ra*dt);SL.b=cl(SL.b+rb*dt);SL.Ga+=ra*dt;SL.Gb+=rb*dt;
+  }
+  for(const P of[SL.Pa,SL.Pb]){
+    if(live){P[0]+=dt*(dt*P[2]-2*P[1]);P[1]-=dt*P[2];P[2]=Math.min(1e-4,P[2]+1e-10*dt)}
+    P[0]=Math.min(.01,P[0]+2e-6*dt);const m=Math.sqrt(P[0]*P[2])*.95;P[1]=Math.max(-m,Math.min(m,P[1]));
+  }
+  const c=SL.c;c[0]+=dt;c[1]+=lat*dt;c[2]+=lon*dt;c[3]+=lat*lat*dt;c[4]+=lon*lon*dt;c[5]+=wu*dt;c[6]+=wu*wu*dt;c[7]+=lat*wu*dt;c[8]+=SL.Ga*dt;c[9]+=SL.Gb*dt;
+  SL.buf.push([now,c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8],c[9]]);while(SL.buf[0][0]<now-9000)SL.buf.shift();
+  if(gps!==SL.g)slGps(now);   // GPSの更新ごとに1回、GPSと比べて直す
+  SL.bx=-(cfg.fx?-1:1)*SL.a;SL.by=sLon()*SL.b;   // 表示の向き: カントは右下がり＋、勾配は上り＋
+}
+function slGps(now){
+  const g0=SL.g,sp=gps.sp,zp=SL.zp,lp=SL.lp,cl=v=>Math.max(-.3,Math.min(.3,v)),c5=v=>Math.max(-5,Math.min(5,v)),cb=v=>Math.max(-.02,Math.min(.02,v));
+  SL.g=gps;SL.zp=SL.lp=null;
   if(!g0||g0.sp==null||sp==null||!g0.ts||!gps.ts||!(gps.acc<=25))return;
-  const T=(gps.ts-g0.ts)/1000;if(!(T>0.4&&T<2.5)||W.T<0.3)return;
-  const n=W.T,mx=W.x/n,my=W.y/n,sx=Math.sqrt(Math.max(0,W.x2/n-mx*mx)),sy=Math.sqrt(Math.max(0,W.y2/n-my*my));
-  const aG=(sp-g0.sp)/3.6/T/9.81,mw=W.wn>n*.8?W.w/W.wn:null,k=Math.min(1,T/4),cl=v=>Math.max(-.3,Math.min(.3,v));
-  const stop=sp<1&&g0.sp<1,run=sp>=10&&g0.sp>=10;
-  if(run&&Math.abs(aG)>0.08&&sy<0.15)SL.ysg=Math.max(-5,Math.min(5,SL.ysg+aG*my*T));
-  if(run&&mw!=null&&Math.abs(mw)>0.08&&sx<0.15)SL.xsg=Math.max(-5,Math.min(5,SL.xsg+mw*mx*T));
-  if(!(stop||run))return;
-  if(sy<0.06&&Math.abs(my)<0.35){SL.by=cl(SL.by+(slSy()*my-(stop?0:aG)-SL.by)*k);SL.ok=true}
-  if(sx<0.06&&Math.abs(mx)<0.5&&(stop||mw!=null))SL.bx=cl(SL.bx+(mx-(stop?0:mw*slGs())-SL.bx)*k);
+  const T=(gps.ts-g0.ts)/1000;if(!(T>0.4&&T<2.5))return;
+  const lag=Date.now()-gps.ts,tk=now-(lag>0&&lag<3000?lag:0),t0=tk-T*1000;   // GPSが測った時刻（センサーの時計で）
+  const aG=(sp-g0.sp)/3.6/T/9.81,lo=Math.min(sp,g0.sp),stop=sp<1&&g0.sp<1,run=lo>=10;
+  const sv=(run?.07:.3)*Math.max(1,gps.acc/10),rv=2*(sv/(T*9.81))**2;   // GPSの車速の誤差から来る、前後加速度の誤差（低速は車速が粗いので大きく見る）
+  // 前後（勾配）: 遅れの候補ごとに区間をずらして平均をとる
+  const ws=SLT.map(s=>slWin(t0-s*1000,tk-s*1000)),w=ws[SL.tj];
+  if(w){
+    const sy=Math.sqrt(Math.max(0,w.lo2-w.lo*w.lo));
+    if(run&&Math.abs(aG)>0.08&&sy<0.15)SL.ysg=c5(SL.ysg+aG*w.lo*T);
+    const s=sLon(),z=ws.map(x=>x?x.lo-s*aG:null),g=ws.map(x=>x?x.gb:null),same=zp&&zp.s===s;
+    if(run&&same&&Math.abs(aG-zp.aG)>0.03&&z.every((v,j)=>v!=null&&zp.z[j]!=null)){   // 加減速が変わったとき、傾きの変化がいちばん小さく見える遅れを選ぶ
+      z.forEach((v,j)=>{const d=v-zp.z[j]-(g[j]-zp.g[j]);SL.E[j]=SL.E[j]*.97+d*d});SL.En=SL.En*.97+1;
+      if(SL.En>6){let m=0;SL.E.forEach((v,j)=>{if(v<SL.E[m])m=j});if(SL.E[m]<SL.E[SL.tj]*.8)SL.tj=m}
+    }
+    const dA=same?aG-zp.aG:aG,y=(stop?w.lo:z[SL.tj])-(w.gb+SL.b-SL.Gb);
+    const R=stop?1.6e-5+.25*sy*sy+.5*y*y:1.6e-5+rv+.09*dA*dA+.09*sy*sy;   // 揺れ・加減速の変わり目・低速ほど信用を下げる（止める／進めるの二択にしない）
+    if(same&&!stop)slH(z[SL.tj]-zp.z[SL.tj],g[SL.tj]-zp.g[SL.tj],R);
+    const k=slKf(SL.Pb,y,R);SL.b=cl(SL.b+k[0]);SL.bb=cb(SL.bb+k[1]);SL.ok=true;SL.tM=now;
+    if(!stop)SL.zp={s,aG,z,g};
+  }
+  // 左右（カント）: ヨーレートは同じ時計なので区間はずらさない。車速だけ遅れの分を進める
+  const v=slWin(t0,tk);
+  if(v&&(stop||yawRaw!=null)){
+    const vm=Math.max(0,(sp+g0.sp)/7.2+aG*9.81*SLT[SL.tj]),mw=vm*v.w/9.81,sx=Math.sqrt(Math.max(0,v.la2-v.la*v.la));
+    if(run&&Math.abs(mw)>0.08&&sx<0.15)SL.xsg=c5(SL.xsg-mw*v.la*T);
+    const s=sLat(),c=stop?0:s*vm/9.81,z=v.la+c*v.w,y=z-(v.ga+SL.a-SL.Ga);
+    const vr=Math.max(0,v.la2-v.la*v.la+c*c*(v.w2-v.w*v.w)+2*c*(v.lw-v.la*v.w));   // 「横G−車速×ヨーレート」の区間内のばらつき（旋回中でも小さい）
+    const R=1.6e-5+.25*vr+(run||stop?.0064:.09)*mw*mw+(stop?.5*y*y:0);
+    if(lp&&lp.s===s&&!stop)slH(z-lp.z,v.ga-lp.g,R);
+    const k=slKf(SL.Pa,y,R);SL.a=cl(SL.a+k[0]);SL.ba=cb(SL.ba+k[1]);SL.tM=now;
+    if(!stop)SL.lp={s,z,g:v.ga};
+  }
 }
 const slPct=v=>v/Math.sqrt(1-v*v)*100;   // sin → %
 // main loop
 function loop(now){
-  let tx=0,ty=0,tz=0;
+  let tx=0,ty=0,tz=0,lat=0,lon=0;
   if(sensor&&basis){   // 0点の重力を引いた残り＝車の加速度。それを右・前・上の向きに分ける
     const B=basis,d={x:raw.x-B.g.x,y:raw.y-B.g.y,z:raw.z-B.g.z};
-    const lat=d.x*B.ex.x+d.y*B.ex.y+d.z*B.ex.z,lon=d.x*B.fw.x+d.y*B.fw.y+d.z*B.fw.z;
+    lat=d.x*B.ex.x+d.y*B.ex.y+d.z*B.ex.z;lon=d.x*B.fw.x+d.y*B.fw.y+d.z*B.fw.z;
     tz=d.x*B.u.x+d.y*B.u.y+d.z*B.u.z;
     tx=-lat*(cfg.fx?-1:1);ty=lon*(cfg.fy?-1:1);   // ボールは体が押される向き（右カーブ→左、加速→下）
   }
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
   let rx=tx,ry=ty;
-  if(sensor&&basis){slStep(tx,ty,dt);if(cfg.slope){tx-=SL.bx;ty-=slSy()*SL.by}}
+  if(sensor&&basis){slStep(lat,lon,dt,now);if(cfg.slope){tx-=SL.bx;ty-=slSy()*SL.by}}
   const yawD=yawLeft(),slOn=!!(cfg.slope&&SL.ok);   // ヨーレートの表示は左旋回＋
   if(rec&&scorer&&sensor)feedScore(scorer,tx,ty,dt,gps.sp);
   if(liveS&&sensor)feedScore(liveS,tx,ty,dt,gps.sp);
