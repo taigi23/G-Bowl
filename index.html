@@ -4,6 +4,9 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.1.0 (2026-11-11) 二輪モード（ベータ、設定でオン）: 車体ごと傾くバイク向けに、傾き（バンク角）をジャイロと「車速×ヨーレート」から大きな角度まで推定。
+                     左右Gはバンク角から求めた旋回Gを表示（ボール・最大G・警告音・採点・ログに反映）、ヨーレートは鉛直まわりに換算、水平線は実際のバンク角で傾く。
+                     バンク角（°）と最大バンクを表示・記録・グラフ化・CSVに追加。採点のアドバイスを二輪向けの言い回しに。直進中に「直立」を自動で覚える
   2.0.0 (2026-11-11) 画面を作り直し。メーター: ボールの背景に水平線（勾配・カント）、外周にヨーレートの弧、四隅に車速と合成G。常に出す数値は左右G・前後Gだけにし、
                      ほかは「詳細」へ。開始・記録のボタンを大きく、記録中の経過時間を表示、横向きの配置に対応。
                      ラップ: ベストとの差を大きく色付きで表示、セクションごとの結果を色付きの札で表示、ラップ一覧とコース設定は折りたたみ。
@@ -275,11 +278,15 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="ax"><div><small>上下</small><strong id="gz">0.00</strong></div><div class="mm" aria-label="上下の最大"><span id="gzp">+0.00</span><span id="gzn">-0.00</span></div></div>
 <div><small>ヨー °/s</small><strong id="yaw">--</strong></div>
 <div><small>勾配 %</small><strong id="grd">--</strong></div>
-<div><small>カント %</small><strong id="cnt">--</strong></div>
+<div><small id="cntl">カント %</small><strong id="cnt">--</strong></div>
 </div>
 <div class="row row2s">
 <div><small>ピッチ °/s（上＋）</small><strong id="prt">--</strong></div>
 <div><small>ロール °/s（右下＋）</small><strong id="rrt">--</strong></div>
+</div>
+<div class="row row2s" id="bkrow" hidden>
+<div><small>最大バンク 左</small><strong id="bkl">0°</strong></div>
+<div><small>最大バンク 右</small><strong id="bkr">0°</strong></div>
 </div>
 <div class="btns">
 <button id="cal">0点合わせ</button><button id="rst">最大値を消す</button>
@@ -395,6 +402,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>音色</span><span><select id="tim" aria-label="音色"></select> <button id="timt">試聴</button></span></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
+<div class="set"><span>二輪モード（ベータ） <small>バイク用。車体の傾き（バンク角）を推定し、左右Gを旋回Gとして表示・記録・採点する</small></span><input type="checkbox" id="bike" aria-label="二輪モード"></div>
+<p class="mcap" id="bikest" hidden>GPSの車速が必要です。0点合わせは車体をまっすぐ立てた状態で行うのが確実ですが、サイドスタンドで合わせても、20km/h以上で直進している間に「直立」を自動で覚えます。勾配の補正は常にオンになります。ベータ版のため、バンク角や採点の基準は今後変わることがあります。</p>
 <div class="set"><span>勾配補正 <small>坂道やカント（路面の横の傾き）で出るGを、GPSの車速とジャイロから推定して差し引く</small></span><input type="checkbox" id="slp" aria-label="勾配補正"></div>
 <p class="mcap" id="slpst">勾配は「上り＋」、カントは「右下がり＋」です。傾きの変化はジャイロですぐに追い、GPSの車速・ヨーレートとの差でゆっくり直します。GPSが途切れている間は直前の値を保ちます。</p>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
@@ -415,7 +424,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.0.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.1.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -423,7 +432,7 @@ const camc=$('camc'),camcx=camc.getContext('2d');
 let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
-const GP=[['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
+const GP=[['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['bank','バンク角'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
 let cfg={gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);cfg.yfc=Math.min(10,Math.max(.5,+cfg.yfc||2));if(!Array.isArray(cfg.gp))cfg.gp=['x','y','rot','sp'];cfg.gp=cfg.gp.filter(k=>GP.some(p=>p[0]===k));if(!cfg.gp.length)cfg.gp=['x','y','rot','sp'];if(cfg.lv!=='live')cfg.lv='saved';saveCfg()}catch(e){}
@@ -515,6 +524,9 @@ $('oimpf').onchange=async e=>{
 $('oclr').onclick=()=>{if(!userCams.length||!confirm('読み込んだオービスの一覧を消しますか？'))return;userCams=[];try{localStorage.removeItem('gm-orbis')}catch(err){}ocnt();drawCams()};
 $('thr').oninput=e=>{cfg.thr=Math.round(+e.target.value*10)/10;$('thrv').textContent=cfg.thr.toFixed(1);saveCfg()};
 $('slp').onchange=e=>{cfg.slope=e.target.checked;saveCfg();slReset(false)};
+function bikeUi(){const b=!!cfg.bike;$('bike').checked=b;$('bikest').hidden=!b;$('bkrow').hidden=!b;$('cntl').textContent=b?'バンク °':'カント %';$('slp').disabled=b}
+$('bike').onchange=e=>{cfg.bike=e.target.checked;if(cfg.bike&&!cfg.gp.includes('bank'))cfg.gp.push('bank');saveCfg();gpUi();slReset(true);clearMax();bikeUi()};
+bikeUi();
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();mirror(false,true)};
 // 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
@@ -610,7 +622,8 @@ $('start').onclick=async()=>{
   if(await start()){startGps();liveS=newScorer();liveEvN=0}else setRun(false);
 };
 $('cal').onclick=()=>{if(!sensor){msg('先に「開始」を押してください。');return}calibrate()};
-function clearMax(){peak=0;trail=[];env.fill(0);for(const k in axMax)axMax[k]=0}
+let bkMax={l:0,r:0};
+function clearMax(){bkMax={l:0,r:0};peak=0;trail=[];env.fill(0);for(const k in axMax)axMax[k]=0}
 $('rst').onclick=clearMax;
 $('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
 $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){LM.cur.setLatLng([p.la,p.lo]).addTo(LM.map);LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
@@ -669,7 +682,7 @@ async function showStor(){
 }
 function saveLog(sc,vm){
   const q=(v,d)=>v==null?null:+v.toFixed(d);
-  const D=[1,3,3,3,1,6,6,3,1,1,1,1,3,3,1,1],rows=log.map(r=>r.map((v,k)=>q(v,D[k]??3)));   // すべての列を保存（桁を丸める）
+  const D=[1,3,3,3,1,6,6,3,1,1,1,1,3,3,1,1,1],rows=log.map(r=>r.map((v,k)=>q(v,D[k]??3)));   // すべての列を保存（桁を丸める）
   const name=new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
   addLog(rows,name,sc,{pj:logPen.slice(0,rows.length),ev:logEv.slice()},vm).then(r=>{
   if(!r.ok)exportCsv(r.L);
@@ -684,7 +697,7 @@ function addLog(rows,name,sc,pen,vm){
 }
 function exportCsv(L){
   const f=v=>v==null?'':v;
-  const t='秒,左右G(左+),前後G(加速+),合成G,km/h,緯度,経度,上下G,標高m,ヨーレート°/s(左+),勾配%(上り+),カント%(右下がり+),補正前左右G(左+),補正前前後G(加速+),ピッチレート°/s(上+),ロールレート°/s(右下がり+)\n'+L.rows.map(r=>{const a=r.slice(0,16);while(a.length<16)a.push(null);[2,13].forEach(k=>{if(a[k]!=null)a[k]=-a[k]});return a.map(f).join(',')}).join('\n');
+  const t='秒,左右G(左+),前後G(加速+),合成G,km/h,緯度,経度,上下G,標高m,ヨーレート°/s(左+),勾配%(上り+),カント%(右下がり+),補正前左右G(左+),補正前前後G(加速+),ピッチレート°/s(上+),ロールレート°/s(右下がり+),バンク角°(右+)\n'+L.rows.map(r=>{const a=r.slice(0,17);while(a.length<17)a.push(null);[2,13].forEach(k=>{if(a[k]!=null)a[k]=-a[k]});return a.map(f).join(',')}).join('\n');
   const d=new Date(L.id),p2=n=>String(n).padStart(2,'0');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));
@@ -699,7 +712,7 @@ function parseCsv(t){
     const c=l.trim().split(',');if(c.length<3)return;
     const tt=n(c[0]),x=n(c[1]),y=n(c[2]);if(tt==null||x==null||y==null)return;
     const m=n(c[3]);
-    rows.push([tt,x,ng(y),m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8]),n(c[9]),n(c[10]),n(c[11]),n(c[12]),ng(n(c[13])),n(c[14]),n(c[15])]);
+    rows.push([tt,x,ng(y),m==null?Math.hypot(x,y):m,n(c[4]),n(c[5]),n(c[6]),n(c[7]),n(c[8]),n(c[9]),n(c[10]),n(c[11]),n(c[12]),ng(n(c[13])),n(c[14]),n(c[15]),n(c[16])]);
   });
   return rows;
 }
@@ -722,6 +735,7 @@ $('rec').onclick=()=>{
   }else msg('記録を破棄しました。');
 };
 function logScore(s){try{if(s.score===undefined||(s.score&&s.score.ph===undefined))s.score=scoreRows(s.rows)}catch(e){s.score=null}return s.score}
+const isBike=L=>L.rows.some(r=>r[16]!=null);   // バンク角の列があれば二輪モードの記録
 const esc=t=>String(t).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
 const fmtDur=t=>t>=3600?Math.floor(t/3600)+'時間'+Math.floor(t%3600/60)+'分':t>=60?Math.floor(t/60)+'分'+String(t%60).padStart(2,'0')+'秒':t+'秒';
 const thumbs=new Map();
@@ -739,7 +753,7 @@ function thumb(L){   // 一覧に出す、走った軌跡の小さな図
 }
 function renderList(){
   if(!logsReady){$('list').innerHTML='<li><small>ログを読み込み中…</small></li>';return}
-  $('list').innerHTML=saved.length?saved.map(s=>'<li class="lg"><button class="lgo" data-a="p" data-id="'+s.id+'">'+thumb(s)+'<div><b>'+esc(s.name)+'</b><small>'+fmtDur(s.dur)+'・最大 '+s.peak+' G'+(s.vid?'・動画あり':'')+'</small></div>'+(logScore(s)?'<span class="lgs"><b>'+s.score.total+'</b><small>点</small></span>':'<span></span>')+'</button><button class="lgm" data-a="m" data-id="'+s.id+'" aria-label="'+esc(s.name)+' のメニュー">⋯</button><div class="lgx" hidden><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="n" data-id="'+s.id+'">名前を変える</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。メーターの「記録開始」で記録できます。</small></li>';
+  $('list').innerHTML=saved.length?saved.map(s=>'<li class="lg"><button class="lgo" data-a="p" data-id="'+s.id+'">'+thumb(s)+'<div><b>'+esc(s.name)+'</b><small>'+fmtDur(s.dur)+'・最大 '+s.peak+' G'+(isBike(s)?'・二輪':'')+(s.vid?'・動画あり':'')+'</small></div>'+(logScore(s)?'<span class="lgs"><b>'+s.score.total+'</b><small>点</small></span>':'<span></span>')+'</button><button class="lgm" data-a="m" data-id="'+s.id+'" aria-label="'+esc(s.name)+' のメニュー">⋯</button><div class="lgx" hidden><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="n" data-id="'+s.id+'">名前を変える</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>保存したログはまだありません。メーターの「記録開始」で記録できます。</small></li>';
 }
 $('list').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
@@ -1689,7 +1703,7 @@ function drawBall(cvs,c,sc){
   const H=sc.hud,R=w/2,k=R*(H?.88:.94),S=sc.S,ring=css('--fg'),ball=css('--ball'),pc=css('--peak');
   c.clearRect(0,0,w,w);
   if(H&&H.tilt){   // 姿勢: 地面側をうすく塗る。水平線の上下＝勾配（上りで下がる）、傾き＝カント（右下がりで右が上がる）。見やすいよう角度は4倍に強調
-    const a=Math.max(-.6,Math.min(.6,Math.atan(H.ca/100)*4)),dy=Math.max(-.7,Math.min(.7,H.gr/15))*k;
+    const a=H.bk!=null?Math.max(-1.25,Math.min(1.25,H.bk*Math.PI/180)):Math.max(-.6,Math.min(.6,Math.atan(H.ca/100)*4)),dy=Math.max(-.7,Math.min(.7,H.gr/15))*k;
     c.save();c.beginPath();c.arc(R,R,k,0,7);c.clip();c.translate(R,R+dy);c.rotate(-a);
     c.globalAlpha=.16;c.fillStyle='#3b82f6';c.fillRect(-2*w,0,4*w,2*w);
     c.globalAlpha=.9;c.strokeStyle='#3b82f6';c.lineWidth=2;c.beginPath();c.moveTo(-2*w,0);c.lineTo(2*w,0);c.stroke();
@@ -1728,7 +1742,7 @@ function drawBall(cvs,c,sc){
     c.textBaseline='alphabetic';c.font=Math.round(13*f)+'px system-ui';
     const sgn=(v,d)=>(v>0?'+':'')+v.toFixed(d);
     c.textAlign='left';c.fillText('勾配 '+(H.tilt?sgn(H.gr,1)+'%':'--'),8,w-8);
-    c.textAlign='right';c.fillText('カント '+(H.tilt?sgn(H.ca,1)+'%':'--'),w-8,w-8);
+    c.textAlign='right';c.fillText(H.bk!=null?'バンク '+sgn(Math.abs(H.bk)<.5?0:H.bk,0)+'°':'カント '+(H.tilt?sgn(H.ca,1)+'%':'--'),w-8,w-8);
     c.textAlign='center';c.fillText('ヨー '+(H.yaw==null?'--':sgn(Math.abs(H.yaw)<.5?0:H.yaw,0)+'°/s'),R,w-8);
   }
 }
@@ -1792,6 +1806,11 @@ function drawPanels(c,w,pts,full,cur,win){
     const mid=top+H/2+6,sc=(H/2-12)/ryaw;[ryaw,0,-ryaw].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));
     RC.slice().reverse().forEach(r=>line(r[0],mid,sc,r[2]));
     c.font='10px system-ui';c.textAlign='left';c.lineJoin='round';let X=52;RC.forEach(r=>{c.fillStyle=r[2];halo(r[1],X,top+11);X+=c.measureText(r[1]).width+8});
+  });
+  let br=0;pts.forEach(p=>{if(p.bk!=null)br=Math.max(br,Math.abs(p.bk))});const rbk=[15,30,45].find(r=>r>=br*1.05)||60;
+  panel('bank','バンク角 °（右＋）',cp?(cp.bk==null?'--':(cp.bk>0?'+':'')+cp.bk.toFixed(0)+'°'):null,top=>{
+    if(!pts.some(p=>p.bk!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('二輪モードで記録すると表示します',w/2,top+H/2+6);return}
+    const mid=top+H/2+6,sc=(H/2-12)/rbk;[rbk,0,-rbk].forEach(v=>grid(mid-v*sc,v===0?'0':(v>0?'+':'')+v,v===0));line('bk',mid,sc);
   });
   panel('sl','勾配（上り＋）／カント（右下がり＋）%',cp?(cp.gr==null?'--':'勾配 '+(cp.gr>0?'+':'')+cp.gr.toFixed(1)+'　カント '+(cp.ca>0?'+':'')+(cp.ca==null?'--':cp.ca.toFixed(1))):null,top=>{
     if(!pts.some(p=>p.gr!=null)){c.fillStyle=mut;c.font='11px system-ui';c.textAlign='center';c.fillText('勾配補正をオンにして記録すると表示します',w/2,top+H/2+6);return}
@@ -1875,14 +1894,14 @@ function openL(L){
     cur.push(last);
   });
   const pen=(L.pen&&L.pen.pj&&L.pen.pj.length===rows.length)?L.pen:scoreSeries(rows).pen;
-  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pr:nv(r[14]),rr:nv(r[15]),pj:pen.pj[i]||0,ev:null}));
+  const nv=v=>v==null?null:v,pts=rows.map((r,i)=>({t:r[0],x:r[1],y:-r[2],m:r[3],sp:r[4],z:nv(r[7]),alt:nv(r[8]),yaw:nv(r[9]),gr:nv(r[10]),ca:nv(r[11]),pr:nv(r[14]),rr:nv(r[15]),bk:nv(r[16]),pj:pen.pj[i]||0,ev:null}));
   pen.ev.forEach(([i,t])=>{if(pts[i])pts[i].ev=t});
   vClearVid();
   V={rows,pts,trk:tr,cur,i:-1,vt:rows[0][0],play:false,sp:+$('vs').value,env:new Array(72).fill(0),peak:0,L,adj:0,vid:false,url:null,z:{a:0,b:rows.length-1}};
   vgZoomUi();
   const hr=rows.some(r=>r[12]!=null);$('vraw').hidden=!hr;$('vraw').classList.remove('on');$('vraw').textContent='補正前のG';
   $('vvst').textContent=L.vid?'このログの動画：'+L.vid+'　「動画を選ぶ」→「ファイルを選択」でファイルアプリから選ぶと、同期して再生します。':'「動画を選ぶ」で録画した動画を選ぶと、同期して再生します。';
-  $('vn').textContent=L.name;$('vsc').innerHTML=scoreHtml(logScore(L));$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
+  $('vn').textContent=L.name;scBike=isBike(L);$('vsc').innerHTML=scoreHtml(logScore(L));$('vk').max=rows.length-1;$('vk').value=0;$('vp').textContent='▶ 再生';
   $('vw').hidden=false;
   const has=tr.length>0;$('vmw').hidden=!has;$('vnogps').hidden=has;
   if(has&&!VM)VM=makeMap($('vm'));
@@ -2094,8 +2113,22 @@ const ADV={
   spike:['Gが出てすぐ戻る動き（トゲ）が多めです。ブレーキやハンドルを一気に戻さず、じわっと抜くようにしましょう。','操作してすぐ戻す動きが目立ちます。一度入れた操作は、少し保ってからゆっくり戻しましょう。'],
   plus:['ブレーキからハンドル操作に移るとき、Gがいったん0に戻っています。ブレーキを少しずつ緩めながらハンドルを切り始めると、つながりが滑らかになります。','減速と旋回の間に「すき間」があります。ブレーキを残したまま曲がり始め、旋回に合わせて抜いていきましょう。']
 };
+const ADV_B={   // 二輪モード用の言い回し
+  latOut:['車体の起こしが急です。寝かせたときと同じくらいゆっくり、一定の速さで起こしましょう。','コーナーの出口で一気に車体を起こしています。スロットルを開けるのに合わせて、少しずつ起こすと横Gが滑らかに抜けます。','起こしで横Gが急に抜けています。出口を見ながら、じわっと起こしてみましょう。'],
+  latIn:['寝かし込みが急です。倒し始めをゆっくりにすると、横Gが穏やかに立ち上がります。','コーナーの入口で一気に寝かせています。ブレーキを緩めながら、じわっと倒し込むようにしましょう。','寝かし込みで横Gが急に立ち上がっています。早めに、少しずつ倒し始めるのがコツです。'],
+  lat:['バンクの変化を滑らかにしましょう。寝かし込みと起こしをゆっくり、一定の速さで行うと、横方向のGの変化が穏やかになります。','切り返し全体がやや急です。視線を先に送り、早めに少しずつ操作すると滑らかになります。'],
+  brOut:['ブレーキのリリースが急です。止まる直前や寝かし始めは、ブレーキをじわっと緩めると車体が前後に揺れません。','ブレーキを離す瞬間に減速Gが急に抜けています。最後の1〜2割をゆっくり緩めてみましょう。'],
+  brIn:['ブレーキのかけ始めが急です。最初に軽く当ててから、少しずつ強めると減速Gが滑らかに立ち上がります。','いきなり強くブレーキをかけています。早めに軽くかけ始めて、必要な分だけ強めましょう。'],
+  acIn:['スロットルの開け始めが急です。最初はそっと開け、車体の向きが決まってから開け足しましょう。','発進や立ち上がりでスロットルを一気に開けています。開け始めの0.5秒をゆっくりにすると滑らかです。'],
+  acOut:['スロットルを戻すのが急です。戻すときもゆっくりにすると、車体が前のめりになりません。','スロットルオフで加速Gが急に抜けています。少し早めに、ゆっくり戻すことを意識しましょう。'],
+  lon:['スロットルとブレーキの操作を滑らかにしましょう。かけ始めと戻す瞬間をゆっくりにすると、縦方向のGの変化が穏やかになります。','スロットルとブレーキの操作がやや急です。手首と指先で細かく調整すると滑らかになります。'],
+  spike:['Gが出てすぐ戻る動き（トゲ）が多めです。ブレーキやバンクを一気に戻さず、じわっと抜くようにしましょう。','操作してすぐ戻す動きが目立ちます。一度入れた操作は、少し保ってからゆっくり戻しましょう。'],
+  plus:['ブレーキから寝かし込みに移るとき、Gがいったん0に戻っています。ブレーキを少しずつ緩めながら寝かせ始めると、つながりが滑らかになります。','減速と旋回の間に「すき間」があります。ブレーキを残したまま曲がり始め、旋回に合わせて抜いていきましょう。']
+};
+const PRAISE_B={latIn:'寝かし込みがとても滑らかです。',latOut:'車体の起こしがとても滑らかです。',brIn:'ブレーキのかけ始めがとても滑らかです。',brOut:'ブレーキのリリースがとても上手です。',acIn:'スロットルの開け始めがとても滑らかです。',acOut:'スロットルの戻し方がとても滑らかです。',spike:'トゲの少ない、丸いGの出し方ができています。',plus:'減速から旋回へのつながりが滑らかです。'};
+let scBike=false;   // 採点の文章を二輪向けにするか（ライブ＝設定、再生＝そのログ）
 const PRAISE={latIn:'ハンドルの切り始めがとても滑らかです。',latOut:'ハンドルの戻しがとても滑らかです。',brIn:'ブレーキの踏み始めがとても滑らかです。',brOut:'ブレーキの抜き方がとても上手です。',acIn:'アクセルの踏み始めがとても滑らかです。',acOut:'アクセルの戻し方がとても滑らかです。',spike:'トゲの少ない、丸いGの出し方ができています。',plus:'減速から旋回へのつながりが滑らかです。'};
-function advPick(sc,k,i){const a=ADV[k];return a[((sc.act/30|0)+i)%a.length]}   // 言い回しを変える（同じ記録では同じ文）
+function advPick(sc,k,i){const a=(scBike?ADV_B:ADV)[k];return a[((sc.act/30|0)+i)%a.length]}   // 言い回しを変える（同じ記録では同じ文）
 function adviceList(sc){
   if(!sc)return[];
   const it=[],ph=sc.ph||{},bad=(v,lim)=>v!=null&&v<lim;
@@ -2117,7 +2150,7 @@ function adviceList(sc){
 }
 function praiseOf(sc){   // 良い点: 一番高い小項目（85点以上）
   const ph=sc.ph||{},c=Object.keys(PRAISE).map(k=>[k==='spike'?sc.spike:k==='plus'?sc.plus:ph[k],k]).filter(x=>x[0]!=null&&x[0]>=85).sort((a,b)=>b[0]-a[0]);
-  return c.length?PRAISE[c[0][1]]:null;
+  return c.length?(scBike?PRAISE_B:PRAISE)[c[0][1]]:null;
 }
 function adviceHtml(sc){
   const l=adviceList(sc),g=praiseOf(sc);
@@ -2125,7 +2158,7 @@ function adviceHtml(sc){
 }
 function phRows(sc){   // 小項目: 操作の場面ごとのなめらかさ
   const p=sc.ph;if(!p)return'';const f=(l,v)=>l+' '+(v==null?'--':v);
-  const r=[['　ハンドル',f('切り増し',p.latIn)+'・'+f('切り戻し',p.latOut)+'　'+f('左カーブ',p.latL)+'・'+f('右カーブ',p.latR)],['　ブレーキ',f('踏み始め',p.brIn)+'・'+f('抜き',p.brOut)],['　アクセル',f('踏み始め',p.acIn)+'・'+f('戻し',p.acOut)]];
+  const B=scBike,r=[['　'+(B?'バンク':'ハンドル'),f(B?'寝かし込み':'切り増し',p.latIn)+'・'+f(B?'起こし':'切り戻し',p.latOut)+'　'+f('左カーブ',p.latL)+'・'+f('右カーブ',p.latR)],['　ブレーキ',f(B?'かけ始め':'踏み始め',p.brIn)+'・'+f('抜き',p.brOut)],['　'+(B?'スロットル':'アクセル'),f(B?'開け始め':'踏み始め',p.acIn)+'・'+f('戻し',p.acOut)]];
   return '<div class="sr"><span>操作の場面ごと</span><small>'+r.map(x=>x[0].trim()+'：'+x[1]).join('<br>')+'<br>（-- は3秒未満で判定なし）</small></div>';
 }
 function scoreHtml(sc){
@@ -2133,7 +2166,7 @@ function scoreHtml(sc){
   const row=(l,v,sub)=>'<div class="sr"><span>'+l+'</span><b>'+v+'</b><small>'+sub+'</small></div>';
   return '<div class="sc"><div class="st"><b>'+sc.total+'</b><span>点</span></div>'
     +row('ジャーク（運転操作）',sc.jerk,'Gの変化のなめらかさ　最大 '+sc.jmax+' G/s')
-    +(sc.lat!=null?row('　横（ハンドル）',sc.lat,'左右Gの変化のなめらかさ')+row('　縦（アクセル・ブレーキ）',sc.lon,'前後Gの変化のなめらかさ'):'')
+    +(sc.lat!=null?row(scBike?'　横（バンク）':'　横（ハンドル）',sc.lat,'左右Gの変化のなめらかさ')+row(scBike?'　縦（スロットル・ブレーキ）':'　縦（アクセル・ブレーキ）',sc.lon,'前後Gの変化のなめらかさ'):'')
     +phRows(sc)
     +row('軌跡の丸み',sc.round,'トゲ '+sc.corners+'回'+(sc.trans?'　前後↔左右の切り替え：なめらか '+sc.conn+' / '+sc.trans+' 回':''))
     +adviceHtml(sc)
@@ -2148,16 +2181,17 @@ const gyA={ex:0,fw:0,u:0,n:0,l:[0,0,0]};   // ジャイロの合計（描画フ�
 const SLT=[0,.25,.5,.75,1,1.25,1.5];   // GPSの車速の遅れの候補（秒）
 const SL={a:0,b:0,bx:0,by:0,xsg:0,ysg:0,yb:0,g:null,ok:false,h:1,hc:.5,hn:0,tj:2,E:SLT.map(()=>0),En:0};
 function slReset(all){
-  SL.a=SL.b=SL.bx=SL.by=0;SL.ok=false;SL.g=null;SL.buf=[];SL.c=[0,0,0,0,0,0,0,0,0,0];SL.Ga=SL.Gb=0;SL.ba=SL.bb=0;
+  SL.a=SL.b=SL.bx=SL.by=SL.bk=0;SL.c=1;SL.ok=false;SL.g=null;SL.buf=[];SL.cs=[0,0,0,0,0,0,0,0,0,0];SL.Ga=SL.Gb=0;SL.ba=SL.bb=0;
   SL.Pa=[.01,0,2.5e-5];SL.Pb=[.01,0,2.5e-5];SL.tM=-1e9;SL.zp=SL.lp=null;
-  if(all){SL.xsg=0;SL.ysg=0}
+  if(all){SL.xsg=0;SL.ysg=0;SL.a0=0}
 }
 slReset(true);
 const sLon=()=>SL.ysg<-0.3?-1:1,sLat=()=>SL.xsg<-0.3?-1:1;   // スマホの前・右が車の前・右と同じ向きか（走りながら確認）
 const slSy=()=>sLon()*(cfg.fy?-1:1),slGs=()=>sLat()*(cfg.fx?-1:1);   // 表示の向きに直した符号（前後G・ヨーレート）
-function yawLeft(){return yawF==null?null:(yawF-SL.yb)*slGs()}
+// 二輪モード: 車体ごと傾くので、ヨーレートは「本当の上向き」（SL.a・SL.b・SL.c）まわりに換算する
+function yawLeft(){return yawF==null?null:(cfg.bike?pitF*SL.a+rolF*SL.b+(yawF-SL.yb)*SL.c:yawF-SL.yb)*slGs()}
 // ピッチ・ロールの角速度（°/s）。勾配・カントの表示と同じ向き（ノーズが上がる＋、右が下がる＋）で、勾配補正が覚えたジャイロのずれを引く
-function pitchUp(){return pitF==null?null:sLon()*(SL.h*pitF-SL.bb*180/Math.PI)}
+function pitchUp(){return pitF==null?null:sLon()*(SL.h*(pitF*SL.c-(yawF-SL.yb)*SL.a)-SL.bb*180/Math.PI)}   // 傾いたまま旋回するとピッチ軸にヨーが回り込むので、その分を除く
 function rollRight(){return rolF==null?null:(cfg.fx?-1:1)*(SL.h*rolF+SL.ba*180/Math.PI)}   // 左旋回＋（°/s）。ローパスをかけた値
 function slWin(t0,t1){   // ためてある値の、時刻 t0〜t1（ms）の平均
   const B=SL.buf;let i=B.length-1;if(i<1||B[0][0]>t0)return null;
@@ -2173,25 +2207,29 @@ function slH(dz,dg,R){   // ジャイロの回転の向きの確認: GPS側の�
   if(SL.hn>4&&SL.hc<-.4){SL.h=-SL.h;SL.hc=.5;SL.hn=0}
 }
 function slStep(lat,lon,dt,now){   // lat・lon＝0点の重力を引いたGの、スマホの右・前の成分
-  const sp=gps.sp,D=Math.PI/180,cl=v=>Math.max(-.3,Math.min(.3,v)),G=gyA;
+  const sp=gps.sp,D=Math.PI/180,lim=cfg.bike?.95:.3,cl=v=>Math.max(-lim,Math.min(lim,v)),G=gyA;
   if(G.n){G.l=[G.ex/G.n,G.fw/G.n,G.u/G.n];G.ex=G.fw=G.u=G.n=0}
   if(yawRaw!=null&&sp!=null&&sp<1&&Math.abs(yawRaw-SL.yb)<5)SL.yb+=(yawRaw-SL.yb)*Math.min(1,dt/5);   // 止まっている間にジャイロのずれを覚える
-  const wu=yawRaw==null?0:(G.l[2]-SL.yb)*D,live=now-SL.tM<3000;
+  const wu=yawRaw==null?0:(G.l[2]-SL.yb)*D,live=now-SL.tM<(cfg.bike?30000:3000),c0=SL.c;
   if(live){   // GPSで直せている間だけジャイロで傾きを進める（途切れたら直前の値を保つ）。ヨーで向きが変わると勾配とカントが入れ替わる分も含める
-    const ra=SL.h*(-G.l[1]*D+wu*SL.b)-SL.ba,rb=SL.h*(G.l[0]*D-wu*SL.a)-SL.bb;
+    const ra=SL.h*(-G.l[1]*D*c0+wu*SL.b)-SL.ba,rb=SL.h*(G.l[0]*D*c0-wu*SL.a)-SL.bb;   // 上向きのベクトルを角速度で回す（大きな傾きでも成り立つ形）
     SL.a=cl(SL.a+ra*dt);SL.b=cl(SL.b+rb*dt);SL.Ga+=ra*dt;SL.Gb+=rb*dt;
   }
   for(const P of[SL.Pa,SL.Pb]){
     if(live){P[0]+=dt*(dt*P[2]-2*P[1]);P[1]-=dt*P[2];P[2]=Math.min(1e-4,P[2]+1e-10*dt)}
     P[0]=Math.min(.01,P[0]+2e-6*dt);const m=Math.sqrt(P[0]*P[2])*.95;P[1]=Math.max(-m,Math.min(m,P[1]));
   }
-  const c=SL.c;c[0]+=dt;c[1]+=lat*dt;c[2]+=lon*dt;c[3]+=lat*lat*dt;c[4]+=lon*lon*dt;c[5]+=wu*dt;c[6]+=wu*wu*dt;c[7]+=lat*wu*dt;c[8]+=SL.Ga*dt;c[9]+=SL.Gb*dt;
+  SL.c=Math.sqrt(Math.max(.01,1-SL.a*SL.a-SL.b*SL.b));
+  // 横の「本当の加速度」に使う角速度。二輪は鉛直まわりのヨーレート×cos（傾いたスマホの横軸に出る分）
+  const wr=cfg.bike?((G.l[0]*SL.a+G.l[1]*SL.b)*D+wu*SL.c)*SL.c:wu;
+  const c=SL.cs;c[0]+=dt;c[1]+=lat*dt;c[2]+=lon*dt;c[3]+=lat*lat*dt;c[4]+=lon*lon*dt;c[5]+=wr*dt;c[6]+=wr*wr*dt;c[7]+=lat*wr*dt;c[8]+=SL.Ga*dt;c[9]+=SL.Gb*dt;
   SL.buf.push([now,c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8],c[9]]);while(SL.buf[0][0]<now-9000)SL.buf.shift();
   if(gps!==SL.g)slGps(now);   // GPSの更新ごとに1回、GPSと比べて直す
   SL.bx=-(cfg.fx?-1:1)*SL.a;SL.by=sLon()*SL.b;   // 表示の向き: カントは右下がり＋、勾配は上り＋
+  SL.bk=-(cfg.fx?-1:1)*(Math.atan2(SL.a,SL.c)-Math.atan2(SL.a0,Math.sqrt(1-SL.a0*SL.a0)))/D;   // バンク角（°、右＋）。直進中に覚えた「直立」からの角度
 }
 function slGps(now){
-  const g0=SL.g,sp=gps.sp,zp=SL.zp,lp=SL.lp,cl=v=>Math.max(-.3,Math.min(.3,v)),c5=v=>Math.max(-5,Math.min(5,v)),cb=v=>Math.max(-.02,Math.min(.02,v));
+  const g0=SL.g,sp=gps.sp,zp=SL.zp,lp=SL.lp,lim=cfg.bike?.95:.3,cl=v=>Math.max(-lim,Math.min(lim,v)),c5=v=>Math.max(-5,Math.min(5,v)),cb=v=>Math.max(-.02,Math.min(.02,v));
   SL.g=gps;SL.zp=SL.lp=null;
   if(!g0||g0.sp==null||sp==null||!g0.ts||!gps.ts||!(gps.acc<=25))return;
   const T=(gps.ts-g0.ts)/1000;if(!(T>0.4&&T<2.5))return;
@@ -2218,13 +2256,16 @@ function slGps(now){
   const v=slWin(t0,tk);
   if(v&&(stop||yawRaw!=null)){
     const vm=Math.max(0,(sp+g0.sp)/7.2+aG*9.81*SLT[SL.tj]),mw=vm*v.w/9.81,sx=Math.sqrt(Math.max(0,v.la2-v.la*v.la));
-    if(run&&Math.abs(mw)>0.08&&sx<0.15)SL.xsg=c5(SL.xsg-mw*v.la*T);
+    if(cfg.bike){   // 二輪は横Gがほぼ出ないので、向きの確認は「旋回が強まるとき、ジャイロのロールも同じ側へ倒れるか」で行う。直進中は「直立」を覚える
+      if(run&&lp&&lp.mw!=null&&Math.abs(mw-lp.mw)>0.03)SL.xsg=c5(SL.xsg+(mw-lp.mw)*(v.ga-lp.g)*40);
+      if(lo>=20&&Math.abs(mw)<0.02)SL.a0+=(SL.a-SL.a0)*Math.min(1,T/20);
+    }else if(run&&Math.abs(mw)>0.08&&sx<0.15)SL.xsg=c5(SL.xsg-mw*v.la*T);
     const s=sLat(),c=stop?0:s*vm/9.81,z=v.la+c*v.w,y=z-(v.ga+SL.a-SL.Ga);
     const vr=Math.max(0,v.la2-v.la*v.la+c*c*(v.w2-v.w*v.w)+2*c*(v.lw-v.la*v.w));   // 「横G−車速×ヨーレート」の区間内のばらつき（旋回中でも小さい）
-    const R=1.6e-5+.25*vr+(run||stop?.0064:.09)*mw*mw+(stop?.5*y*y:0);
+    const R=1.6e-5+.25*vr+(cfg.bike?.0025:run||stop?.0064:.09)*mw*mw+(stop?.5*y*y:0);
     if(lp&&lp.s===s&&!stop)slH(z-lp.z,v.ga-lp.g,R);
     const k=slKf(SL.Pa,y,R);SL.a=cl(SL.a+k[0]);SL.ba=cb(SL.ba+k[1]);SL.tM=now;
-    if(!stop)SL.lp={s,z,g:v.ga};
+    if(!stop)SL.lp={s,z,g:v.ga,mw};
   }
 }
 const slPct=v=>v/Math.sqrt(1-v*v)*100;   // sin → %
@@ -2239,8 +2280,8 @@ function loop(now){
   }
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
   let rx=tx,ry=ty;
-  if(sensor&&basis){slStep(lat,lon,dt,now);if(cfg.slope){tx-=SL.bx;ty-=slSy()*SL.by}}
-  const yawD=yawLeft(),pitD=pitchUp(),rolD=rollRight(),slOn=!!(cfg.slope&&SL.ok);   // ヨーレートの表示は左旋回＋
+  if(sensor&&basis){slStep(lat,lon,dt,now);if(cfg.slope||cfg.bike){tx-=SL.bx;ty-=slSy()*SL.by;if(cfg.bike)tx/=SL.c}}   // 二輪: 横Gはセンサーにほぼ出ないので、傾きから求めた旋回G（水平方向）にする
+  const yawD=yawLeft(),pitD=pitchUp(),rolD=rollRight(),slOn=!!((cfg.slope||cfg.bike)&&SL.ok),bkD=slOn&&cfg.bike?SL.bk:null;   // ヨーレートの表示は左旋回＋
   if(rec&&scorer&&sensor)feedScore(scorer,tx,ty,dt,gps.sp);
   if(liveS&&sensor)feedScore(liveS,tx,ty,dt,gps.sp);
   const al=dt/(1/(2*Math.PI*cfg.fc)+dt);
@@ -2260,10 +2301,10 @@ function loop(now){
   if(now-lastS>=100){
     lastS=now;
     let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
-    const gr=slOn?+slPct(SL.by).toFixed(1):null,ca=slOn?+slPct(SL.bx).toFixed(1):null,yw=yawD==null?null:+yawD.toFixed(1),pw=pitD==null?null:+pitD.toFixed(1),rw=rolD==null?null:+rolD.toFixed(1);
-    hist.push({t:now/1000,x:sg.x,y:sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca,pr:pw,rr:rw});if(hist.length>N)hist.shift();
+    const gr=slOn?+slPct(SL.by).toFixed(1):null,ca=slOn&&!cfg.bike?+slPct(SL.bx).toFixed(1):null,bkv=bkD==null?null:+bkD.toFixed(1),yw=yawD==null?null:+yawD.toFixed(1),pw=pitD==null?null:+pitD.toFixed(1),rw=rolD==null?null:+rolD.toFixed(1);
+    hist.push({t:now/1000,x:sg.x,y:sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca,pr:pw,rr:rw,bk:bkv});if(hist.length>N)hist.shift();
     if(rec){
-      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt,yw,gr,ca,cfg.slope?+sgR.x.toFixed(3):null,cfg.slope?+(-sgR.y).toFixed(3):null,pw,rw]);
+      log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt,yw,gr,ca,cfg.slope||cfg.bike?+sgR.x.toFixed(3):null,cfg.slope||cfg.bike?+(-sgR.y).toFixed(3):null,pw,rw,bkv]);
       logPen.push(scorer?+takeP(scorer).toFixed(2):0);
       if(scorer)for(;recEvN<scorer.ev.length;recEvN++)logEv.push([log.length-1,scorer.ev[recEvN].type]);
     }
@@ -2279,7 +2320,8 @@ function loop(now){
     $('alt').textContent=gps.alt==null?'--':Math.round(gps.alt);
     {const f=v=>v==null?'--':(Math.abs(v)<.5?'0':(v>0?'+':'')+v.toFixed(0));$('prt').textContent=f(pitD);$('rrt').textContent=f(rolD)}
     $('yaw').textContent=yawD==null?'--':(Math.abs(yawD)<.5?'0':(yawD>0?'+':'')+yawD.toFixed(0));
-    {const f=v=>(Math.abs(v)<.05?0:v).toFixed(1);$('grd').textContent=slOn?(SL.by>0.0005?'+':'')+f(slPct(SL.by)):'--';$('cnt').textContent=slOn?(SL.bx>0.0005?'+':'')+f(slPct(SL.bx)):'--'}
+    {const f=v=>(Math.abs(v)<.05?0:v).toFixed(1);$('grd').textContent=slOn?(SL.by>0.0005?'+':'')+f(slPct(SL.by)):'--';$('cnt').textContent=bkD!=null?(bkD>=.5?'+':'')+bkD.toFixed(0):slOn?(SL.bx>0.0005?'+':'')+f(slPct(SL.bx)):'--'}
+    if(bkD!=null){if(!hold){if(bkD>bkMax.r)bkMax.r=bkD;if(-bkD>bkMax.l)bkMax.l=-bkD}$('bkl').textContent=bkMax.l.toFixed(0)+'°';$('bkr').textContent=bkMax.r.toFixed(0)+'°'}
     $('pk').textContent=peak.toFixed(2);$('pks').textContent=peak.toFixed(2);
     $('rdot').hidden=!rec;if(rec){const e=Math.floor((now-t0)/1000);$('rtm').textContent=Math.floor(e/60)+':'+String(e%60).padStart(2,'0')}
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
@@ -2289,9 +2331,9 @@ function loop(now){
     if(now-sclT>500){
       sclT=now;const el=$('scl');el.hidden=!rec;
       if(rec){const r=scoreResult(scorer);el.textContent=r?'採点中　ジャーク '+r.jerk+'　丸み '+r.round+'　（暫定 '+r.total+'点）':'採点中（加減速や旋回が少ないため集計中）'}
-      const ad=$('adv'),ar=rec?scoreResult(scorer):null;ad.hidden=!ar;if(ar){const l=adviceList(ar);ad.textContent='アドバイス：'+(l[0]||'滑らかに運転できています。この調子です。')}
+      scBike=!!cfg.bike;const ad=$('adv'),ar=rec?scoreResult(scorer):null;ad.hidden=!ar;if(ar){const l=adviceList(ar);ad.textContent='アドバイス：'+(l[0]||'滑らかに運転できています。この調子です。')}
     }
-    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn?slPct(SL.bx):0}});
+    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn&&!cfg.bike?slPct(SL.bx):0,bk:bkD}});
   }
   if(!$('pl').hidden){
     if(gc.clientWidth)drawPanels(gx,gc.clientWidth,hist,false);
