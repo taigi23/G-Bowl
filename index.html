@@ -4,6 +4,9 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.5.1 (2026-11-12) 修正: ジャイロの軸の対応が間違っていた（rotationRate の alpha/beta/gamma を Z/X/Y 軸として読んでいたが、正しくは X/Y/Z 軸）。
+                     ヨーレート・ピッチ/ロールの角速度・ロール角/ピッチ角・勾配/カント補正・二輪モードのバンク角がすべて別の軸の回転を使っていた。
+                     修正: ラインの幅がコース編集中の地図の線に反映されず、保存すると編集前の幅に戻っていた（新しく作るコースでも幅を変えられるように）
   2.5.0 (2026-11-11) デザインを切り替えられるように（設定「デザイン」）: 標準／レーシング（光る軌跡・車速の弧・LEDバー）／アナログ計器（ベゼルと真鍮色の玉・水平儀・針のスピードメーター）／
                      HUD（黒地に細い線・水平線と姿勢の目盛り）。配色と数字の書体もデザインごとに変わる
   2.4.0 (2026-11-11) ラップ比較を再生画面のグラフに重ねて表示（比べる相手＝オレンジ／同じ色の点線、同じ地点どうしを重ねる）。グラフに「タイム差」の段を追加し、比べると選んだラップの範囲に拡大。
@@ -480,7 +483,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.5.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.5.1',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -617,7 +620,7 @@ function onMotion(e){
   raw.x=sg_*a.x/9.81;raw.y=sg_*a.y/9.81;raw.z=sg_*(a.z||0)/9.81;
   const rr=e.rotationRate;   // ジャイロ（°/s）。「上」の向きのまわりの回転＝ヨーレート（反時計回り＝左旋回が＋）
   if(rr&&rr.alpha!=null&&basis){
-    const B=basis,wx=rr.beta||0,wy=rr.gamma||0,wz=rr.alpha,u=B.u;yawRaw=wx*u.x+wy*u.y+wz*u.z;
+    const B=basis,wx=rr.alpha,wy=rr.beta||0,wz=rr.gamma||0,u=B.u;yawRaw=wx*u.x+wy*u.y+wz*u.z;   // rotationRate は alpha＝X軸・beta＝Y軸・gamma＝Z軸まわり（iPhone も Android も同じ。端末の向きの alpha/beta/gamma とは対応が違う）
     const t=performance.now(),dt=Math.min(Math.max((t-gyT)/1000,.001),.1);gyT=t;   // ヨーレートのローパス（1次を2段。2段で設定のカットオフになるよう1段ぶんを1.554倍にする）
     const pe=wx*B.ex.x+wy*B.ex.y+wz*B.ex.z,rf=wx*B.fw.x+wy*B.fw.y+wz*B.fw.z;   // スマホの右まわり（ピッチ）・前まわり（ロール）の角速度
     if(yawF==null){yawF1=yawF=yawRaw;pitF1=pitF=pe;rolF1=rolF=rf}
@@ -1288,7 +1291,11 @@ $('trset').onclick=()=>{
 $('trsel').onchange=e=>{cfg.trackId=e.target.value||null;saveCfg();LP.T=null;lapReset();renderTrackUi()};
 $('trren').onclick=()=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T)return;const n=prompt('コースの名前',T.name);if(n&&n.trim()){T.name=n.trim().slice(0,30);saveTracks();renderTrackUi()}};
 $('trdel').onclick=()=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T||!confirm('「'+T.name+'」を削除しますか？'))return;tracks=tracks.filter(t=>t!==T);saveTracks();if(cfg.trackId===T.id){cfg.trackId=null;saveCfg()}LP.T=null;lapReset();renderTrackUi()};
-$('trw').oninput=e=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T)return;T.w=+e.target.value;$('trwv').textContent=T.w;saveTracks();drawSF()};
+$('trw').oninput=e=>{   // ラインの幅: スタート／ゴールとセクションの線で共通。コースの編集中は、編集している地図の線に反映する（保存で確定）
+  const w=+e.target.value;$('trwv').textContent=w;
+  if(ED){ED.T.w=w;edDraw();return}
+  const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T)return;T.w=w;saveTracks();for(const k in lapCache)delete lapCache[k];drawSF();renderTrackUi();
+};
 cfg.lapVoice=cfg.lapVoice!==false;$('lapv').checked=cfg.lapVoice;$('lapv').onchange=e=>{cfg.lapVoice=e.target.checked;saveCfg()};
 $('lpcn').onclick=()=>{const d=$('lcs');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})};
 $('lprs').onclick=()=>{if(LP.laps.length&&!confirm('このセッションのラップを消しますか？'))return;const keep=LP.start;lapReset();LP.start=keep;LP.prev=null};
@@ -1323,7 +1330,7 @@ function edDraw(){
 function openEditor(T){
   ED={T:T?JSON.parse(JSON.stringify(T)):{id:null,name:'',type:'loop',la:null,lo:null,h:0,w:30,f:null,sec:[]},wh:'s',isNew:!T,tr:[]};
   if(!ED.T.type)ED.T.type='loop';if(!ED.T.sec)ED.T.sec=[];
-  $('tedw').hidden=false;$('tedh').textContent=T?'「'+T.name+'」を編集':'コースを作る';
+  $('tedw').hidden=false;$('tedh').textContent=T?'「'+T.name+'」を編集':'コースを作る';$('trw').disabled=false;$('trw').value=ED.T.w;$('trwv').textContent=ED.T.w;
   $('tedst').textContent='地図をタップすると、その場所に線を置きます。灰色の線はこれまでの走行記録です。向き（矢印）は近くの走行記録から自動で合わせます。違っていたら「向きを反転」かスライダーで直してください。';$('ttype').value=ED.T.type;
   if(!TM){TM=makeMap($('tmap'));if(TM)TM.map.on('click',e=>edTap(e.latlng.lat,e.latlng.lng))}
   if(!TM)return;
@@ -1350,7 +1357,7 @@ $('tsdel').onclick=()=>{if(!ED||!ED.wh.startsWith('k'))return;ED.T.sec.splice(+E
 $('twh').onchange=e=>{ED.wh=e.target.value;edDraw();const ln=edLine();if(TM&&ln&&ln.la!=null)TM.map.setView([ln.la,ln.lo],Math.max(TM.map.getZoom(),17))};   // 選んだ線へ地図を移動
 $('th').oninput=e=>{const ln=edLine();if(!ln)return;ln.h=+e.target.value;$('thv').textContent=ln.h;edDraw()};
 $('tflip').onclick=()=>{const ln=edLine();if(!ln)return;ln.h=(ln.h+180)%360;edDraw()};
-$('tcancel').onclick=()=>{ED=null;$('tedw').hidden=true};
+$('tcancel').onclick=()=>{ED=null;$('tedw').hidden=true;renderTrackUi()};
 $('tsave').onclick=()=>{
   const T=ED.T;
   if(T.la==null){msg('地図をタップして、スタートの線を置いてください。');return}
