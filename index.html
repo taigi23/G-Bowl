@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.6.1 (2026-11-16) GPSを測位したら音・読み上げ・表示で知らせる（途切れたときも表示。メーターの上に「GPS ±5m」）。セクションを通過したら、その時点のラップタイムを読み上げ、メーターにも表示。
+                     自動記録: 待機中かどうかをメーターの上に表示。車速が一瞬取れなくても数え直さない。設定をオンにしたとき「開始」を押していなければ案内を出す
   2.6.0 (2026-11-16) 追加: すべてのログとコースを1つのファイルにバックアップ／戻す。ログのメモと、名前・メモでの検索。自動記録（走り出したら記録、1分止まったら保存）。
                      加速・制動の計測（0-60・0-100km/h、100-0・60-0km/h の時間と距離。保存したログからも計測）。再生画面に「分析」: G-G図と、コーナーごとの
                      進入・最低・脱出の速度、最大横G、ブレーキを始めた位置（ラップ比較中は相手との差も）。オフライン対応（同じ場所に sw.js を置くと、電波がなくても開ける）。
@@ -151,6 +153,8 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .hud{display:flex;justify-content:space-between;align-items:center;min-height:1.6em;margin:0 2px 6px;font-size:.85rem;color:var(--mut);font-variant-numeric:tabular-nums}
 .hud b{color:var(--fg)}
 .rdot,.rdot b{color:var(--peak)}
+.gst{flex:1;text-align:center;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gst.warn{color:var(--peak)}
 .btns.main{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:10px}
 .btns.main #cal{padding:0 18px}
 .btns.main button{min-height:56px;font-size:1.05rem;font-weight:700}
@@ -328,7 +332,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <main>
 <section id="pm">
 <div class="bcol">
-<div class="hud"><span id="rdot" class="rdot" hidden>● 記録中 <b id="rtm">0:00</b></span><span></span><span>制限 <b id="lim">--</b></span></div>
+<div class="hud"><span id="rdot" class="rdot" hidden>● 記録中 <b id="rtm">0:00</b></span><span id="gst" class="gst"></span><span>制限 <b id="lim">--</b></span></div>
 <div id="led" class="led" aria-hidden="true"></div>
 <div class="bw"><canvas id="c" aria-label="Gボール"></canvas></div>
 </div>
@@ -413,7 +417,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </div>
 <div class="set"><span>ラインの幅 <b><span id="trwv">30</span> m</b></span><input type="range" id="trw" min="10" max="80" step="5" aria-label="ラインの幅"></div>
 <div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
-<div class="set"><span>ラップタイムを読み上げる</span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
+<div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
+<div class="set"><span>ラップタイムを読み上げる <small>ラップと、セクション通過時のタイム</small></span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
 <p class="mcap">「地図で新しく作る」では、地図をタップしてスタートとゴールの線を置けます（周回と、スタートとゴールが別の区間を選べます）。「今いる場所を…」は、走りながら、スタート／ゴールにしたい場所を通過する瞬間に押すと、そこを進む向きに垂直なラインとして登録し、その瞬間からラップ1を計ります。ログ再生画面の「ラップ」からも、再生位置をラインにできます。iPhoneのGPSは1秒に1回程度なので、通過した時刻は前後の位置から補間して求めます（ずれの目安 ±0.1〜0.3秒）。</p>
 </details>
 </section>
@@ -518,7 +523,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.6.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.6.1',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -638,7 +643,7 @@ $('slp').onchange=e=>{cfg.slope=e.target.checked;saveCfg();slReset(false)};
 function bikeUi(){const b=!!cfg.bike;$('bike').checked=b;$('bikest').hidden=!b;$('bkrow').hidden=!b;$('cntl').textContent=b?'バンク °':'カント %';$('slp').disabled=b}
 $('bike').onchange=e=>{cfg.bike=e.target.checked;if(cfg.bike&&!cfg.gp.includes('bank'))cfg.gp.push('bank');saveCfg();gpUi();slReset(true);clearMax();bikeUi()};
 bikeUi();
-$('arec').checked=!!cfg.autoRec;$('arec').onchange=e=>{cfg.autoRec=e.target.checked;saveCfg();arGo=arStop=null};
+$('arec').checked=!!cfg.autoRec;$('arec').onchange=e=>{cfg.autoRec=e.target.checked;saveCfg();arGo=arStop=null;if(cfg.autoRec&&!running)msg('自動記録をオンにしました。「開始」を押すと待機に入り、10km/h以上で走り出すと記録を始めます。')};
 $('skin').onchange=e=>{cfg.skin=e.target.value;saveCfg();skinApply();size()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();mirror(false,true)};
@@ -1292,7 +1297,8 @@ function lapFix(la,lo,ts){
 function lapStartSay(){msg('ラップタイム計測を開始しました');if(cfg.lapVoice!==false)speakJa('ラップタイム計測を開始しました')}
 function secDone(k){   // セクションの線を通過：短いチャイムと、そのセクションのタイム・ベストとの差
   const sp=LP.splits,v=sp[k]-(k?sp[k-1]:0),b=LP.bestSec[k];
-  LP.secMsg={k,v:isFinite(v)?v:null,d:b!=null&&isFinite(v)?v-b:null,until:performance.now()+8000};
+  LP.secMsg={k,e:sp[k],v:isFinite(v)?v:null,d:b!=null&&isFinite(v)?v-b:null,until:performance.now()+8000};   // e＝スタートからここまでのタイム
+  if(cfg.lapVoice!==false&&isFinite(sp[k]))setTimeout(()=>speakJa('セクション'+(k+1)+'、'+sayLap(sp[k])),150);
   if(ac){const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=1175;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.09);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.1)}
 }
 function lapDone(lap,isBest,prevBest,b){
@@ -1331,7 +1337,7 @@ function lapTick(){   // 画面の更新（毎フレーム）
     $('lpsp').textContent=gps.sp==null?'--':Math.round(gps.sp);
   }
   const m=$('lapm');m.hidden=!on;
-  if(on)m.innerHTML=LP.start==null?'⏱ '+T.name+'：'+(LP.halt!=null?'停止中（'+fmtLap(LP.halt)+'）。':'')+'スタート／ゴールの通過待ち':'⏱ ラップ '+(LP.laps.length+1)+'　<b>'+fmtLap(el)+'</b>'+(LP.delta==null?'':'　<b style="color:'+dc+'">'+fmtDelta(LP.delta)+'</b>')+(LP.best==null?'':'　ベスト '+fmtLap(LP.best))+(LP.secMsg&&performance.now()<LP.secMsg.until&&LP.secMsg.d!=null?'　S'+(LP.secMsg.k+1)+' <b style="color:'+(LP.secMsg.d>0?'#dc2626':'#16a34a')+'">'+fmtDelta(LP.secMsg.d)+'</b>':'');
+  if(on)m.innerHTML=LP.start==null?'⏱ '+T.name+'：'+(LP.halt!=null?'停止中（'+fmtLap(LP.halt)+'）。':'')+'スタート／ゴールの通過待ち':'⏱ ラップ '+(LP.laps.length+1)+'　<b>'+fmtLap(el)+'</b>'+(LP.delta==null?'':'　<b style="color:'+dc+'">'+fmtDelta(LP.delta)+'</b>')+(LP.best==null?'':'　ベスト '+fmtLap(LP.best))+(LP.secMsg&&performance.now()<LP.secMsg.until?'<br>S'+(LP.secMsg.k+1)+' 通過'+(LP.secMsg.e!=null?' <b>'+fmtLap(LP.secMsg.e)+'</b>':'')+(LP.secMsg.d!=null?'　区間 <b style="color:'+(LP.secMsg.d>0?'#dc2626':'#16a34a')+'">'+fmtDelta(LP.secMsg.d)+'</b>':''):'');
 }
 function drawLines(G,T){   // スタート＝緑と白、ゴール（周回はスタート／ゴール）＝黒と白のチェッカー。矢印は進む向き
   const one=(ln,col,num)=>{const e=lineEnds(ln);L.polyline(e,{pane:'mrk',color:col,weight:7,opacity:.95}).addTo(G);L.polyline(e,{pane:'mrk',color:'#fff',weight:3,dashArray:'4 4'}).addTo(G);
@@ -1377,6 +1383,7 @@ $('trw').oninput=e=>{   // ラインの幅: スタート／ゴールとセクシ
   if(ED){ED.T.w=w;edDraw();return}
   const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(!T)return;T.w=w;saveTracks();for(const k in lapCache)delete lapCache[k];drawSF();renderTrackUi();
 };
+cfg.gpsVoice=cfg.gpsVoice!==false;$('gpsv').checked=cfg.gpsVoice;$('gpsv').onchange=e=>{cfg.gpsVoice=e.target.checked;saveCfg()};
 cfg.lapVoice=cfg.lapVoice!==false;$('lapv').checked=cfg.lapVoice;$('lapv').onchange=e=>{cfg.lapVoice=e.target.checked;saveCfg()};
 $('lpcn').onclick=()=>{const d=$('lcs');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})};
 $('lprs').onclick=()=>{if(LP.laps.length&&!confirm('このセッションのラップを消しますか？'))return;const k={start:LP.start,dist:LP.dist,cur:LP.cur,splits:LP.splits,si:LP.si,prev:LP.prev};lapReset();Object.assign(LP,k)};   // 走っている周の計測（距離・セクション）はそのまま続ける
@@ -1594,13 +1601,29 @@ $('vtrset').onclick=()=>{
 function vAutoLap(){if(V&&V.lapT){const R=lapsOfLog(V.L,V.lapT);if(R.laps.length)V.lapA=R.laps.reduce((a,b)=>b.time<a.time?b:a)}}
 // 比較グラフ（横軸＝ラップ内の距離）: タイム差、車速、左右G、前後G。青＝選んだラップ、オレンジ＝比べる相手
 // gps
-function stopGps(){if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null,alt:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null;curHdg=null;hdgRef=null;LP.prev=null}
+function stopGps(){gpsOk=false;gpsAt=0;gpsSaid=false;if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null}gps={sp:null,lat:null,lon:null,alt:null};spdLim=null;lastQ=null;overState=false;overCount=0;curId=null;near=null;limFails=0;roadNoData=false;recent=[];lastVal=null;camState={};orbNear=null;curHdg=null;hdgRef=null;LP.prev=null}
+let gpsOk=false,gpsAt=0,gpsSaid=false;   // gpsOk＝測位できている（精度30m以内の位置が届いている）
+function gpsNote(acc){   // 測位できたお知らせ（「開始」のあと最初の1回と、途切れてから戻ったとき）
+  msg('GPSを測位しました（精度 約'+Math.round(acc)+'m）。');
+  if(ac)[[0,880],[.12,1319]].forEach(([d,f])=>{const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.1);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.12)});
+  if(cfg.gpsVoice!==false&&!gpsSaid)setTimeout(()=>speakJa('GPSを測位しました'),300);gpsSaid=true;   // 読み上げは「開始」ごとに最初の1回だけ（戻ったときは音と表示）
+}
+function gpsUi(){   // メーターの上の表示: GPSの状態と、自動記録の待機
+  let t='';
+  if(running){
+    if(gpsOk&&Date.now()-gpsAt>15000){gpsOk=false;msg('GPSが途切れました。')}   // 15秒以上、位置が届かない
+    t=gpsOk?'GPS ±'+Math.round(gps.acc||0)+'m':wid!=null?(gpsAt?'GPS 途切れ':'GPS 測位中…'):'';
+    if(cfg.autoRec&&!rec)t+=(t?'・':'')+'自動記録 待機中';
+  }else if(cfg.autoRec)t='自動記録は「開始」で待機';
+  const e=$('gst');if(e._t!==t){e._t=t;e.textContent=t;e.classList.toggle('warn',running&&!gpsOk&&wid!=null)}
+}
 function startGps(){
   if(wid!=null)return;
   if(!navigator.geolocation){msg('この環境ではGPSを使えません。');return}
   wid=navigator.geolocation.watchPosition(p=>{
     const c=p.coords;
     gps={sp:c.speed==null||c.speed<0?null:c.speed*3.6,lat:c.latitude,lon:c.longitude,alt:c.altitude==null||!isFinite(c.altitude)?null:c.altitude,ts:p.timestamp,acc:c.accuracy};
+    if(c.accuracy<=30){gpsAt=Date.now();if(!gpsOk){gpsOk=true;gpsNote(c.accuracy)}}
     if(c.accuracy<=100){
       const q={la:c.latitude,lo:c.longitude,m:curM};
       trk.push(q);curM=0;if(trk.length>20000)trk.shift();
@@ -2668,7 +2691,7 @@ function perfLive(now){   // GPSの更新ごとに1回
 let arGo=null,arStop=null,recAuto=false;
 function autoRec(now){
   if(!cfg.autoRec||!running)return;const sp=gps.sp;
-  if(!rec){if(sp!=null&&sp>=10){if(arGo==null)arGo=now;else if(now-arGo>2000){arGo=null;recStart(true)}}else arGo=null}
+  if(!rec){if(sp!=null&&sp>=10){if(arGo==null)arGo=now;else if(now-arGo>2000){arGo=null;recStart(true)}}else if(sp!=null||(arGo!=null&&now-arGo>6000))arGo=null}   // 車速が一瞬取れないだけなら数え直さない
   else if(recAuto){if(sp==null||sp<2){if(arStop==null)arStop=now;else if(now-arStop>60000){arStop=null;recStop(true)}}else arStop=null}
 }
 // main loop
@@ -2727,7 +2750,7 @@ function loop(now){
     {const f=v=>(Math.abs(v)<.05?0:v).toFixed(1);$('grd').textContent=slOn?(SL.by>0.0005?'+':'')+f(slPct(SL.by)):'--';$('cnt').textContent=bkD!=null?(bkD>=.5?'+':'')+bkD.toFixed(0):slOn?(SL.bx>0.0005?'+':'')+f(slPct(SL.bx)):'--'}
     if(bkD!=null){if(!hold){if(bkD>bkMax.r)bkMax.r=bkD;if(-bkD>bkMax.l)bkMax.l=-bkD}$('bkl').textContent=bkMax.l.toFixed(0)+'°';$('bkr').textContent=bkMax.r.toFixed(0)+'°'}
     $('pk').textContent=peak.toFixed(2);$('pks').textContent=peak.toFixed(2);
-    $('rdot').hidden=!rec;if(rec){const e=Math.floor((now-t0)/1000);$('rtm').textContent=Math.floor(e/60)+':'+String(e%60).padStart(2,'0')}
+    gpsUi();$('rdot').hidden=!rec;if(rec){const e=Math.floor((now-t0)/1000);$('rtm').textContent=Math.floor(e/60)+':'+String(e%60).padStart(2,'0')}
     $('sp').textContent=gps.sp==null?'--':Math.round(gps.sp);
     $('lim').textContent=limTxt();
     $('sp').style.color=overState?css('--peak'):'';
