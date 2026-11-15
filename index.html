@@ -4,6 +4,9 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.5.2 (2026-11-16) 修正: カメラ画面と録画の前後Gの符号が逆だった／記録中に「停止」すると0の行が増え続けた／通過していないセクションがあると理論ベストが短く出た／
+                     ゴール時の最後のセクションの差がベスト更新時に±0.00になった／走行中に「ラップを消す」とその周の距離とセクションが狂った／59.995秒以上が「0:60.00」と出た／
+                     停止後に勾配・姿勢の値が残った／地図を読めないとき「コース全体」でエラー／許可の確認中に停止すると表示と動作がずれた／ライブの目盛りを「10秒前」に
   2.5.1 (2026-11-12) 修正: ジャイロの軸の対応が間違っていた（rotationRate の alpha/beta/gamma を Z/X/Y 軸として読んでいたが、正しくは X/Y/Z 軸）。
                      ヨーレート・ピッチ/ロールの角速度・ロール角/ピッチ角・勾配/カント補正・二輪モードのバンク角がすべて別の軸の回転を使っていた。
                      修正: ラインの幅がコース編集中の地図の線に反映されず、保存すると編集前の幅に戻っていた（新しく作るコースでも幅を変えられるように）
@@ -483,7 +486,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.5.1',APP_DATE='2026-11-11';
+const APP_VERSION='2.5.2',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -684,12 +687,14 @@ async function start(){
   }catch(e){msg('センサーを開始できませんでした。');return false}
 }
 function setRun(on){running=on;const b=$('start');b.textContent=on?'停止':'開始';b.classList.toggle('p',!on);b.classList.toggle('on',on)}
-function stopAll(){lapHalt();removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;tlF=tlF1=null;yawRaw=yawF=yawF1=pitF=pitF1=rolF=rolF1=null;gyA.ex=gyA.fw=gyA.u=gyA.n=0;gyA.l=[0,0,0];try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
+let runTok=0;
+function stopAll(){runTok++;lapHalt();slReset(false);atF=null;removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;tlF=tlF1=null;yawRaw=yawF=yawF1=pitF=pitF1=rolF=rolF1=null;gyA.ex=gyA.fw=gyA.u=gyA.n=0;gyA.l=[0,0,0];try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
 if(cfg.g0)basis=makeBasis(cfg.g0);
 $('start').onclick=async()=>{
   if(running){stopAll();return}
-  setRun(true);
-  if(await start()){startGps();liveS=newScorer();liveEvN=0}else setRun(false);
+  const my=++runTok;setRun(true);const ok=await start();
+  if(my!==runTok){if(ok&&!running){removeEventListener('devicemotion',onMotion);try{wl&&wl.release()}catch(e){}wl=null}return}   // 許可の確認中に「停止」された
+  if(ok){startGps();liveS=newScorer();liveEvN=0}else setRun(false);
 };
 $('cal').onclick=()=>{if(!sensor){msg('先に「開始」を押してください。');return}calibrate()};
 let bkMax={l:0,r:0};
@@ -922,7 +927,7 @@ function drawCam(){
   let bx=sg.x/S2,by=sg.y/S2,l=Math.hypot(bx,by);if(l>1){bx/=l;by/=l}
   c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,w*.06,0,7);c.fill();
   $('camg').textContent=Math.hypot(sg.x,sg.y).toFixed(2);
-  $('camd').textContent='左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　上下 '+sg.z.toFixed(2)+'　最大 '+peak.toFixed(2);
+  $('camd').textContent='左右 '+sg.x.toFixed(2)+'　前後 '+sg.y.toFixed(2)+'　上下 '+sg.z.toFixed(2)+'　最大 '+peak.toFixed(2);
   $('cams').textContent=(gps.sp==null?'--':Math.round(gps.sp))+' km/h　制限 '+limTxt();
   $('camst').textContent=running?'停止':'開始';
   const rb=$('camrec');rb.textContent=rec?'記録停止':'記録開始';rb.classList.toggle('on',rec);
@@ -974,7 +979,7 @@ function drawRec(){
   c.textAlign='right';
   c.font='700 '+Math.round(u*9)+'px '+f;c.fillText(Math.hypot(sg.x,sg.y).toFixed(2)+' G',W-u*3,u*11);
   c.font=Math.round(u*3.6)+'px '+f;
-  c.fillText('左右 '+sg.x.toFixed(2)+'　前後 '+(-sg.y).toFixed(2)+'　最大 '+peak.toFixed(2),W-u*3,u*16.5);
+  c.fillText('左右 '+sg.x.toFixed(2)+'　前後 '+sg.y.toFixed(2)+'　最大 '+peak.toFixed(2),W-u*3,u*16.5);
   c.fillText((gps.sp==null?'--':Math.round(gps.sp))+' km/h　制限 '+limTxt(),W-u*3,u*21.5);
   c.textAlign='left';
   c.fillText(d.getFullYear()+'/'+pad2(d.getMonth()+1)+'/'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),u*3,u*6);
@@ -1140,7 +1145,7 @@ function showOrbStat(){
 // ===== ラップ計測: スタート／ゴールライン（進行方向に垂直な線）をGPSで通過した時刻を、前後の位置から補間して求める =====
 let tracks=[];try{tracks=JSON.parse(localStorage.getItem('gm-tracks')||'[]')||[]}catch(e){tracks=[]}
 const saveTracks=()=>{try{localStorage.setItem('gm-tracks',JSON.stringify(tracks))}catch(e){}};
-const fmtLap=s=>s==null||!isFinite(s)?'--:--.--':Math.floor(s/60)+':'+(s%60).toFixed(2).padStart(5,'0');
+const fmtLap=s=>{if(s==null||!isFinite(s))return'--:--.--';const c=Math.round(s*100);return Math.floor(c/6000)+':'+(c%6000/100).toFixed(2).padStart(5,'0')};
 const fmtDelta=d=>d==null||!isFinite(d)?'':(d>0?'+':d<0?'−':'±')+Math.abs(d).toFixed(2);
 const sayLap=s=>{const m=Math.floor(s/60),r=s-m*60,sec=Math.floor(r),t=Math.floor((r-sec)*10);return(m?m+'分':'')+sec+'秒'+t};
 const llXY=(la,lo,o)=>[(lo-o.lo)*111320*Math.cos(o.la*Math.PI/180),(la-o.la)*110540];
@@ -1163,7 +1168,7 @@ function interpT(P,d){
 const secLine=(T,k)=>({la:T.sec[k].la,lo:T.sec[k].lo,h:T.sec[k].h,w:T.w});
 // 区切り時刻（スタートからの時間）の並びから、各セクションのタイムを出す。通過できなかったセクションは null
 function secTimes(sp,time,n){const o=[];let pv=0;for(let k=0;k<=n;k++){const e=k<n?sp[k]:time;o.push(e==null||pv==null?null:e-pv);pv=e==null?null:e}return o}
-const theoBest=bs=>bs.length&&bs.every(v=>v!=null)?bs.reduce((a,b)=>a+b,0):null;   // 理論ベスト
+const theoBest=(bs,n)=>{if(!n)return null;let t=0;for(let k=0;k<n;k++){if(bs[k]==null)return null;t+=bs[k]}return t};   // n＝セクションの数。1つでも通過していないセクションがあれば出さない   // 理論ベスト
 let LP={T:null,prev:null,start:null,dist:0,cur:[],laps:[],best:null,bestPts:null,delta:null,splits:[],si:0,bestSec:[],secMsg:null};
 function lapHalt(){   // 停止・記録停止: タイマーを止め、次にスタート／ゴールを通過するまで待つ（走っていた周は記録しない）
   if(LP.start!=null)LP.halt=performance.now()/1000-LP.start;
@@ -1191,9 +1196,10 @@ function lapFix(la,lo,ts){
     const finish=f=>{   // ゴールの線を通過：1周（区間）を記録
       const tc=at(f),time=tc-LP.start;LP.cur.push({d:LP.dist+sd*f,t:time});
       const lap={n:LP.laps.length+1,time,secs:NS?secTimes(LP.splits,time,NS):null},isBest=LP.best==null||time<LP.best,prevBest=LP.best;
+      const pbs=lap.secs?LP.bestSec[lap.secs.length-1]:null;   // 更新する前の、最後のセクションのベスト
       if(lap.secs)lap.secs.forEach((v,k)=>{if(v!=null&&(LP.bestSec[k]==null||v<LP.bestSec[k]))LP.bestSec[k]=v});
       LP.laps.push(lap);if(isBest){LP.best=time;LP.bestPts=LP.cur}
-      lapDone(lap,isBest,prevBest);
+      lapDone(lap,isBest,prevBest,pbs);
     };
     const begin=f=>{if(LP.start==null)lapStartSay();LP.halt=null;const tc=at(f);LP.start=tc;LP.dist=sd*(1-f);LP.cur=[{d:0,t:0},{d:LP.dist,t:t-tc}];LP.delta=null;LP.splits=[];LP.si=0};
     if(!sprint){
@@ -1214,8 +1220,8 @@ function secDone(k){   // セクションの線を通過：短いチャイムと
   LP.secMsg={k,v:isFinite(v)?v:null,d:b!=null&&isFinite(v)?v-b:null,until:performance.now()+8000};
   if(ac){const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=1175;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.09);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.1)}
 }
-function lapDone(lap,isBest,prevBest){
-  if(lap.secs){const k=lap.secs.length-1,v=lap.secs[k],b=LP.bestSec[k];LP.secMsg={k,v,d:v!=null&&b!=null?v-b:null,until:performance.now()+8000}}
+function lapDone(lap,isBest,prevBest,b){
+  if(lap.secs){const k=lap.secs.length-1,v=lap.secs[k];LP.secMsg={k,v,d:v!=null&&b!=null?v-b:null,until:performance.now()+8000}}
   if(ac)[[0,1319],[.13,1760]].forEach(([d,f])=>{const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.35,t+.01);g.gain.linearRampToValueAtTime(0,t+.12);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.14)});
   if(cfg.lapVoice!==false)setTimeout(()=>speakJa('ラップ'+lap.n+'、'+sayLap(lap.time)+(isBest&&prevBest!=null?'、ベスト':'')),350);
   msg('ラップ '+lap.n+'：'+fmtLap(lap.time)+(isBest?(prevBest!=null?'（ベスト更新）':''):'（ベスト '+fmtLap(LP.best)+'）'));
@@ -1229,7 +1235,7 @@ const fmtSec=v=>v>=60?fmtLap(v):v.toFixed(2);
 function renderLapList(){
   const el=$('lpls');if(!el)return;
   el.innerHTML=LP.laps.slice().reverse().map(l=>'<li'+(l.time===LP.best?' class="best"':'')+'><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===LP.best?'ベスト':fmtDelta(l.time-LP.best))+'</small>'+secRow(l.secs,LP.bestSec)+'</li>').join('');
-  const tb=theoBest(LP.bestSec);$('lptb').textContent=tb!=null&&LP.laps.length>1?fmtLap(tb):'--';
+  const tb=theoBest(LP.bestSec,LP.T&&LP.T.sec&&LP.T.sec.length?LP.T.sec.length+1:0);$('lptb').textContent=tb!=null&&LP.laps.length>1?fmtLap(tb):'--';
   $('lpl').textContent=LP.laps.length?fmtLap(LP.laps[LP.laps.length-1].time):'--';
   $('lpb').textContent=LP.best==null?'--':fmtLap(LP.best);
   $('lpc').textContent=LP.laps.length;
@@ -1298,7 +1304,7 @@ $('trw').oninput=e=>{   // ラインの幅: スタート／ゴールとセクシ
 };
 cfg.lapVoice=cfg.lapVoice!==false;$('lapv').checked=cfg.lapVoice;$('lapv').onchange=e=>{cfg.lapVoice=e.target.checked;saveCfg()};
 $('lpcn').onclick=()=>{const d=$('lcs');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})};
-$('lprs').onclick=()=>{if(LP.laps.length&&!confirm('このセッションのラップを消しますか？'))return;const keep=LP.start;lapReset();LP.start=keep;LP.prev=null};
+$('lprs').onclick=()=>{if(LP.laps.length&&!confirm('このセッションのラップを消しますか？'))return;const k={start:LP.start,dist:LP.dist,cur:LP.cur,splits:LP.splits,si:LP.si,prev:LP.prev};lapReset();Object.assign(LP,k)};   // 走っている周の計測（距離・セクション）はそのまま続ける
 // 地図でコースを作る・直す: タップした場所に線を置き、向きは近くの走行記録の進む向きに合わせる
 let ED=null,TM=null;
 function edTraces(la,lo){   // これまでの走行記録（今回の軌跡と保存したログ）の位置の並び
@@ -1385,7 +1391,7 @@ function lapMapFix(la,lo){   // GPSのたびに更新
   if(TM&&ED){TM.cur.setLatLng([la,lo]).addTo(TM.map)}
 }
 $('lmfol').onclick=()=>{if(!LMM)return;LMM.follow=true;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){LMM.cur.setLatLng([p.la,p.lo]).addTo(LMM.map);LMM.map.setView([p.la,p.lo],Math.max(LMM.map.getZoom(),16))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
-$('lmall').onclick=()=>{const T=LP.T||activeTrack(gps.lat,gps.lon)||(cfg.trackId&&tracks.find(t=>t.id===cfg.trackId));if(T){LMM.follow=false;lapFitTrack(T)}else msg('使うコースがありません。')};
+$('lmall').onclick=()=>{const T=LP.T||activeTrack(gps.lat,gps.lon)||(cfg.trackId&&tracks.find(t=>t.id===cfg.trackId));if(T&&!LMM)lapMap();if(T&&!LMM){msg('地図を読み込めていません。通信できる場所で開き直してください。');return}if(T){LMM.follow=false;lapFitTrack(T)}else msg('使うコースがありません。')};
 $('tfol').onclick=()=>{if(!TM)return;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){TM.cur.setLatLng([p.la,p.lo]).addTo(TM.map);TM.map.setView([p.la,p.lo],Math.max(TM.map.getZoom(),17))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
 $('trnew').onclick=()=>openEditor(null);
 $('tredit').onclick=()=>{const T=LP.T||tracks.find(t=>t.id===cfg.trackId);if(T)openEditor(T)};
@@ -1450,7 +1456,7 @@ function renderVLap(){
   const R=T?lapsOfLog(V.L,T):{laps:[]};V.lapR=R;
   const best=R.laps.length?Math.min(...R.laps.map(l=>l.time)):null,NS=T&&T.sec?T.sec.length:0,bs=[];
   if(NS)R.laps.forEach(l=>l.secs&&l.secs.forEach((v,k)=>{if(v!=null&&(bs[k]==null||v<bs[k]))bs[k]=v}));
-  const tb=NS&&R.laps.length>1?theoBest(bs):null;
+  const tb=NS&&R.laps.length>1?theoBest(bs,NS+1):null;
   $('vlpl').innerHTML=!T?'<li class="none">コースを選ぶか、再生位置をスタート／ゴールにすると、ラップに分けます。</li>'
     :!R.laps.length?'<li class="none">このログには、スタート／ゴールを2回通過した記録がありません。</li>'
     :R.laps.map(l=>'<li data-n="'+l.n+'" class="'+(l.time===best?'best ':'')+(V.lapA&&V.lapA.n===l.n?'sel':'')+'"><span>Lap '+l.n+'</span><b>'+fmtLap(l.time)+'</b><small>'+(l.time===best?'ベスト':fmtDelta(l.time-best))+'</small>'+secRow(l.secs,bs)+'</li>').join('')+(tb!=null?'<li class="none">理論ベスト（各セクションのベストの合計） <b>'+fmtLap(tb)+'</b></li>':'');
@@ -1931,7 +1937,7 @@ function drawPanels(c,w,pts,full,cur,win){
     let prev=null;
     for(let i=i0;i<=i1;i++){const k=Math.floor((pts[i].t-base)/st+1e-6);if(prev!==null&&k!==prev)ticks.push({x:px(i),t:k*st});prev=k}
   }
-  const tl=t=>full?fmtT(t):(t===0?'今':t+'秒');
+  const tl=t=>full?fmtT(t):(t===0?'今':Math.abs(t)+'秒前');
   let yl=[];
   const grid=(y,lab,dash)=>{c.strokeStyle=ring;c.lineWidth=1;if(dash)c.setLineDash([3,3]);c.beginPath();c.moveTo(0,Math.round(y)+.5);c.lineTo(w,Math.round(y)+.5);c.stroke();c.setLineDash([]);yl.push([y,lab])};
   const halo=(t,x,y)=>{c.lineWidth=3;c.strokeStyle=bg;c.strokeText(t,x,y);c.fillText(t,x,y)};
@@ -2446,7 +2452,7 @@ function slGps(now){
     }
     const dA=same?aG-zp.aG:aG,y=(stop?w.lo:z[SL.tj])-(w.gb+SL.b-SL.Gb);
     const R=stop?1.6e-5+.25*sy*sy+.5*y*y:1.6e-5+rv+.09*dA*dA+.09*sy*sy;   // 揺れ・加減速の変わり目・低速ほど信用を下げる（止める／進めるの二択にしない）
-    if(same&&!stop)slH(z[SL.tj]-zp.z[SL.tj],g[SL.tj]-zp.g[SL.tj],R);
+    if(same&&!stop&&zp.z[SL.tj]!=null&&zp.g[SL.tj]!=null)slH(z[SL.tj]-zp.z[SL.tj],g[SL.tj]-zp.g[SL.tj],R);
     const k=slKf(SL.Pb,y,R);SL.b=cl(SL.b+k[0]);SL.bb=cb(SL.bb+k[1]);SL.ok=true;SL.tM=now;
     if(!stop)SL.zp={s,aG,z,g};
   }
@@ -2501,7 +2507,7 @@ function loop(now){
     let hev=null;if(liveS)for(;liveEvN<liveS.ev.length;liveEvN++)hev=liveS.ev[liveEvN].type;
     const gr=slOn?+slPct(SL.by).toFixed(1):null,ca=slOn&&!cfg.bike?+slPct(SL.bx).toFixed(1):null,bkv=bkD==null?null:+bkD.toFixed(1),yw=yawD==null?null:+yawD.toFixed(1),pw=pitD==null?null:+pitD.toFixed(1),rw=rolD==null?null:+rolD.toFixed(1),trv=trD==null?null:+trD.toFixed(1),tpv=tpD==null?null:+tpD.toFixed(1),arv=atD?+atD.r.toFixed(1):null,apv=atD?+atD.p.toFixed(1):null;
     hist.push({t:now/1000,x:sg.x,y:sg.y,z:sg.z,alt:gps.alt,m,sp:gps.sp,pj:liveS?takeP(liveS):0,ev:hev,yaw:yw,gr,ca,pr:pw,rr:rw,bk:bkv,tr:arv,tp:apv});if(hist.length>N)hist.shift();
-    if(rec){
+    if(rec&&sensor){   // 「停止」中は行を足さない（記録は続いていて、再び「開始」すると続きから入る）
       log.push([(now-t0)/1000,sg.x,-sg.y,m,gps.sp,gps.lat,gps.lon,sg.z,gps.alt,yw,gr,ca,cfg.slope||cfg.bike?+sgR.x.toFixed(3):null,cfg.slope||cfg.bike?+(-sgR.y).toFixed(3):null,pw,rw,bkv,arv,apv,trv,tpv]);
       logPen.push(scorer?+takeP(scorer).toFixed(2):0);
       if(scorer)for(;recEvN<scorer.ev.length;recEvN++)logEv.push([log.length-1,scorer.ev[recEvN].type]);
