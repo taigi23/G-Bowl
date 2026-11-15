@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.6.2 (2026-11-16) 修正: 「自動記録」と「GPSの測位を読み上げる」の設定が、設定画面ではなくラップタブの「コース設定」の中に入っていた（設定画面へ移動）。
+                     「測位」の読み上げを「そくい」に
   2.6.1 (2026-11-16) GPSを測位したら音・読み上げ・表示で知らせる（途切れたときも表示。メーターの上に「GPS ±5m」）。セクションを通過したら、その時点のラップタイムを読み上げ、メーターにも表示。
                      自動記録: 待機中かどうかをメーターの上に表示。車速が一瞬取れなくても数え直さない。設定をオンにしたとき「開始」を押していなければ案内を出す
   2.6.0 (2026-11-16) 追加: すべてのログとコースを1つのファイルにバックアップ／戻す。ログのメモと、名前・メモでの検索。自動記録（走り出したら記録、1分止まったら保存）。
@@ -416,8 +418,6 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button id="tfol">現在地</button><button id="tflip">向きを反転</button><button id="tcancel">やめる</button><button class="p" id="tsave">保存</button></div>
 </div>
 <div class="set"><span>ラインの幅 <b><span id="trwv">30</span> m</b></span><input type="range" id="trw" min="10" max="80" step="5" aria-label="ラインの幅"></div>
-<div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
-<div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
 <div class="set"><span>ラップタイムを読み上げる <small>ラップと、セクション通過時のタイム</small></span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
 <p class="mcap">「地図で新しく作る」では、地図をタップしてスタートとゴールの線を置けます（周回と、スタートとゴールが別の区間を選べます）。「今いる場所を…」は、走りながら、スタート／ゴールにしたい場所を通過する瞬間に押すと、そこを進む向きに垂直なラインとして登録し、その瞬間からラップ1を計ります。ログ再生画面の「ラップ」からも、再生位置をラインにできます。iPhoneのGPSは1秒に1回程度なので、通過した時刻は前後の位置から補間して求めます（ずれの目安 ±0.1〜0.3秒）。</p>
 </details>
@@ -498,6 +498,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>音色</span><span><select id="tim" aria-label="音色"></select> <button id="timt">試聴</button></span></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
+<div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
+<div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
 <div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
 <div class="set"><span>二輪モード（ベータ） <small>バイク用。車体の傾き（バンク角）を推定し、左右Gを旋回Gとして表示・記録・採点する</small></span><input type="checkbox" id="bike" aria-label="二輪モード"></div>
 <p class="mcap" id="bikest" hidden>GPSの車速が必要です。0点合わせは車体をまっすぐ立てた状態で行うのが確実ですが、サイドスタンドで合わせても、20km/h以上で直進している間に「直立」を自動で覚えます。勾配の補正は常にオンになります。ベータ版のため、バンク角や採点の基準は今後変わることがあります。</p>
@@ -523,7 +525,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.6.1',APP_DATE='2026-11-11';
+const APP_VERSION='2.6.2',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -1606,7 +1608,7 @@ let gpsOk=false,gpsAt=0,gpsSaid=false;   // gpsOk＝測位できている（精�
 function gpsNote(acc){   // 測位できたお知らせ（「開始」のあと最初の1回と、途切れてから戻ったとき）
   msg('GPSを測位しました（精度 約'+Math.round(acc)+'m）。');
   if(ac)[[0,880],[.12,1319]].forEach(([d,f])=>{const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.1);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.12)});
-  if(cfg.gpsVoice!==false&&!gpsSaid)setTimeout(()=>speakJa('GPSを測位しました'),300);gpsSaid=true;   // 読み上げは「開始」ごとに最初の1回だけ（戻ったときは音と表示）
+  if(cfg.gpsVoice!==false&&!gpsSaid)setTimeout(()=>speakJa('GPSをそくいしました'),300);gpsSaid=true;   // 読み上げは「開始」ごとに最初の1回だけ（戻ったときは音と表示）
 }
 function gpsUi(){   // メーターの上の表示: GPSの状態と、自動記録の待機
   let t='';
