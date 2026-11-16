@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.6.3 (2026-11-16) ホーム画面のアイコンから開いていて、ログもコースも空のときに、Safari とは保存場所が別であることと移し方を表示
   2.6.2 (2026-11-16) 修正: 「自動記録」と「GPSの測位を読み上げる」の設定が、設定画面ではなくラップタブの「コース設定」の中に入っていた（設定画面へ移動）。
                      「測位」の読み上げを「そくい」に
   2.6.1 (2026-11-16) GPSを測位したら音・読み上げ・表示で知らせる（途切れたときも表示。メーターの上に「GPS ±5m」）。セクションを通過したら、その時点のラップタイムを読み上げ、メーターにも表示。
@@ -439,6 +440,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="note" style="margin-top:10px">⚠ このサイトを7日以上開かない場合、保存したログが消えることがあります。「すべてバックアップ」で、全部のログとコースを1つのファイルに書き出せます（動画は含みません）。</p>
 </div>
 </section>
+<p id="hnote" class="note" hidden>ホーム画面のアイコンから開いています。この開き方は Safari とは保存場所が別なので、Safari で記録したログやコースはここには出ません（消えてはいません）。<br>移すには：Safari でこのページを開く → ログタブ「すべてバックアップ」→ こちらのログタブ「バックアップから戻す」。</p>
 <p id="msg">「開始」を押すと、センサーとGPSが動き出し、傾きや加減速でボールが動きます。</p>
 </main>
 <div id="vw" hidden><div class="in">
@@ -525,7 +527,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.6.2',APP_DATE='2026-11-11';
+const APP_VERSION='2.6.3',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -597,6 +599,12 @@ async function swInit(){
   }catch(e){set('未対応（sw.js が見つかりません。index.html と同じ場所に置いてください）')}
 }
 swInit();
+// ホーム画面のアイコンから「Webアプリ」として開いたときは、Safari とは保存場所が別になる（ログ・コース・設定が空に見える）。空のときに案内を出す
+const isHomeApp=()=>navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+function homeAppNote(){
+  const e=$('hnote');if(!e)return;
+  e.hidden=!(isHomeApp()&&logsReady&&!saved.length&&!tracks.length);
+}
 const doUpdate=()=>{
   if(rec&&!confirm('記録中です。更新すると今の記録は保存されずに消えます。更新しますか？'))return;
   location.reload();
@@ -909,6 +917,7 @@ function thumb(L){   // 一覧に出す、走った軌跡の小さな図
 function renderList(){
   if(!logsReady){$('list').innerHTML='<li><small>ログを読み込み中…</small></li>';return}
   const q=($('lq').value||'').trim().toLowerCase(),show=q?saved.filter(s=>(s.name+'\n'+(s.memo||'')).toLowerCase().includes(q)):saved;$('lq').hidden=saved.length<4&&!q;
+  try{homeAppNote()}catch(e){}
   $('list').innerHTML=show.length?show.map(s=>'<li class="lg"><button class="lgo" data-a="p" data-id="'+s.id+'">'+thumb(s)+'<div><b>'+esc(s.name)+'</b><small>'+fmtDur(s.dur)+'・最大 '+s.peak+' G'+(isBike(s)?'・二輪':'')+(s.vid?'・動画あり':'')+'</small>'+(s.memo?'<small class="memo">'+esc(s.memo.split('\n')[0])+'</small>':'')+'</div>'+(logScore(s)?'<span class="lgs"><b>'+s.score.total+'</b><small>点</small></span>':'<span></span>')+'</button><button class="lgm" data-a="m" data-id="'+s.id+'" aria-label="'+esc(s.name)+' のメニュー">⋯</button><div class="lgx" hidden><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="n" data-id="'+s.id+'">名前を変える</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>'+(q?'「'+esc(q)+'」に合うログはありません。':'保存したログはまだありません。メーターの「記録開始」で記録できます。')+'</small></li>';
 }
 $('lq').oninput=renderList;
