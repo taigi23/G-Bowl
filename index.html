@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.8.0 (2026-11-20) タブレットの画面に対応（幅700px以上）。縦向き: Gボールを大きく、左右G・前後G・ロール・ピッチを1列に。横向き: メーターはGボールと数値を左右に並べ、ラップ・ライブのログ・再生画面も2列に。文字とボタンも大きく
   2.7.2 (2026-11-20) 設定画面: いちばん上で下へスワイプすると閉じる。設定の外（周りに見えている画面）をタップしても閉じる
   2.7.1 (2026-11-20) ダブルタップで画面が拡大しないように（ボタンを続けて押したときなど。ピンチでの拡大と、地図のダブルタップでの拡大はそのまま）
   2.7.0 (2026-11-20) スマホを水平方向に斜めに置いたとき用に「置き方の向き」を追加（設定。上から見て右回りにずらした角度を入れると、左右G・前後G・姿勢・勾配補正をすべて車の向きに直す）
@@ -335,6 +336,37 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 [data-skin="c"] button,[data-skin="c"] select{border-radius:0}
 [data-skin="c"] .row>div,[data-skin="c"] .att,[data-skin="c"] .lapm{background:none;border-radius:0;border-top:1px solid #222}
 [data-skin="c"] .row2:not(.attw) strong{font-size:2.2rem}
+/* タブレット（幅700px以上）: 画面の大きさに合わせて配置を変える */
+@media (min-width:700px) and (min-height:600px){
+html{font-size:18px}
+.in,main,header{max-width:min(1240px,100%);box-sizing:border-box}
+dialog{width:min(92vw,540px)}
+#vc{width:min(100%,440px)}
+#mp,#vm,#lmap{height:440px}
+.lapbig b{font-size:4.6rem}
+}
+@media (min-width:700px) and (min-height:600px) and (orientation:portrait){
+.in,main,header{max-width:800px}
+#pm .bw{width:min(100%,calc(100vh - 500px));min-width:360px;margin:0 auto}
+#pm .scol{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 8px}
+#pm .scol>*{grid-column:1/-1}
+#pm .scol>.row2:first-child{grid-column:1}
+#pm .scol>#att{grid-column:2;margin-top:0}
+}
+@media (min-width:900px) and (orientation:landscape) and (min-height:521px){
+#pm{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;align-items:start}
+#pm .bw{width:min(58vw,calc(100vh - 150px));min-width:300px}
+#pt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 24px;align-items:start}
+#pt .fold{grid-column:1/-1}
+#lmap{height:calc(100vh - 220px);margin-top:0}
+#plv{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:0 20px;align-items:start}
+#plv>.chips{grid-column:1/-1}
+#plv>#g{grid-column:1;grid-row:2/span 3}
+#plv>#mp,#plv>.mcap,#plv>.btns{grid-column:2}
+#plv>#mp{height:calc(100vh - 300px);margin-top:10px}
+#vw .vcols{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 24px;align-items:start}
+#vw #vm{height:calc(100vh - 280px);min-height:300px}
+}
 </style>
 </head>
 <body>
@@ -457,6 +489,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div id="vw" hidden><div class="in">
 <div class="btns" style="align-items:center"><button id="vx">← 戻る</button><b id="vn"></b></div>
 <textarea id="vmemo" class="vmemo" rows="2" placeholder="メモ（タイヤ、空気圧、天気、気づいたことなど）" aria-label="ログのメモ"></textarea>
+<div class="vcols"><div class="vcolL">
 <video id="vv" playsinline muted hidden></video>
 <canvas id="vc" aria-label="再生中のGボール"></canvas>
 <p id="vr"></p>
@@ -469,6 +502,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <canvas id="vg" aria-label="ログのグラフ"></canvas>
 <p class="mcap" id="vgz">ピンチで拡大・縮小　タップでカーソル移動</p>
 <div class="btns"><button id="vgall" hidden>グラフを全体表示</button></div>
+</div><div class="vcolR">
 <div id="vmw"><div id="vm" aria-label="ログの走行マップ"></div>
 <p class="mcap">緑の丸＝開始　青の丸＝再生位置　線の色＝G（青→緑→黄→赤）　ピンチで拡大・縮小</p>
 <div class="btns"><button id="vfol">再生位置</button><button id="vall">全体表示</button></div></div>
@@ -491,6 +525,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </details>
 <div class="perfw" id="vperfw" hidden><small>加速・制動</small><div class="perf" id="vperf"></div></div>
 <div id="vsc"></div>
+</div></div>
 </div></div>
 <div id="camw" hidden>
 <video id="camv" playsinline muted autoplay aria-label="カメラ映像"></video>
@@ -541,7 +576,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.7.2',APP_DATE='2026-11-11';
+const APP_VERSION='2.8.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -1944,7 +1979,7 @@ function ledSet(f){   // レーシング: 上のLED（Gが大きいほど多く�
   [...l.children].forEach((e,i)=>{e.style.background=i<n?(i<8?'#22d3ee':i<11?'#a3e635':i<13?'#fbbf24':'#f43f5e'):''});
 }
 function drawBallSkin(c,w,sc){
-  const H=sc.hud,R=w/2,S=sc.S,f=Math.max(.7,Math.min(1.3,w/360)),P=Math.PI,sk=SKIN;
+  const H=sc.hud,R=w/2,S=sc.S,f=Math.max(.7,Math.min(1.9,w/360)),P=Math.PI,sk=SKIN;
   const k=R*(sk==='b'?.66:H?.76:.9);
   const sgn=(v,d)=>(v>0?'+':'')+v.toFixed(d);
   let bx=sc.x/S,by=sc.y/S;const l=Math.hypot(bx,by);if(l>1){bx/=l;by/=l}
@@ -2047,7 +2082,7 @@ function drawBall(cvs,c,sc){
   if(l>1){bx/=l;by/=l}
   c.fillStyle=ball;c.beginPath();c.arc(R+bx*k,R+by*k,R*.07,0,7);c.fill();
   if(H){
-    const mut=css('--mut'),kr=R*.94,f=Math.max(.7,Math.min(1.3,w/360));
+    const mut=css('--mut'),kr=R*.94,f=Math.max(.7,Math.min(1.9,w/360));
     // ヨーレート: 外周の弧（真上が0、左旋回で左へ伸びる。30°/sで60°ぶん）
     c.strokeStyle=ring;c.lineWidth=2;c.beginPath();c.moveTo(R,R-kr-6);c.lineTo(R,R-kr+6);c.stroke();
     if(H.yaw!=null&&Math.abs(H.yaw)>=.5){
