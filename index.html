@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.10.0 (2026-11-20) Gボール: 最大の範囲の塗りつぶしをやめ、通ったGを点（散布図）で残し、最大の範囲は線で重ねる（1秒に10点、最大10分ぶん。「最大値を消す」で消える）。再生画面も同じ
   2.9.0 (2026-11-20) 向き合わせ: 設定の「ブレーキ・加速で合わせる」を押して、まっすぐ走ってブレーキ（または加速）すると、置き方の向きの角度を自動で決める
   2.8.0 (2026-11-20) タブレットの画面に対応（幅700px以上）。縦向き: Gボールを大きく、左右G・前後G・ロール・ピッチを1列に。横向き: メーターはGボールと数値を左右に並べ、ラップ・ライブのログ・再生画面も2列に。文字とボタンも大きく
   2.7.2 (2026-11-20) 設定画面: いちばん上で下へスワイプすると閉じる。設定の外（周りに見えている画面）をタップしても閉じる
@@ -578,7 +579,7 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.9.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.10.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -797,7 +798,7 @@ function calibrate(){
   if(!B){msg('置き方を読み取れませんでした。スマホを動かさずに、もう一度「0点合わせ」を押してください。');return false}
   basis=B;cfg.g0=B.g;saveCfg();slReset(true);
   sg={x:0,y:0,z:0};sgR={x:0,y:0};trail=[];maxHold=performance.now()+500;   // 古い0点の値から0へ戻る途中で最大値を更新しない
-  if(gf)env.fill(0);
+  if(gf){env.fill(0);dotsClear(DOTS)}
   msg('0点を合わせました（'+poseName(B)+yawTxt()+'）。');
   return true;
 }
@@ -835,7 +836,7 @@ $('start').onclick=async()=>{
 };
 $('cal').onclick=()=>{if(!sensor){msg('先に「開始」を押してください。');return}calibrate()};
 let bkMax={l:0,r:0};
-function clearMax(){bkMax={l:0,r:0};peak=0;trail=[];env.fill(0);for(const k in axMax)axMax[k]=0}
+function clearMax(){bkMax={l:0,r:0};peak=0;trail=[];env.fill(0);dotsClear(DOTS);for(const k in axMax)axMax[k]=0}
 $('rst').onclick=clearMax;
 $('clr').onclick=()=>{trk=[];if(LM)clearTrack(LM)};
 $('mfol').onclick=()=>{if(!LM)return;LM.follow=true;const p=gps.lat!=null?{la:gps.lat,lo:gps.lon}:trk[trk.length-1];if(p){LM.cur.setLatLng([p.la,p.lo]).addTo(LM.map);LM.map.setView([p.la,p.lo],Math.max(LM.map.getZoom(),16))}else msg('現在地がまだ分かりません。「開始」を押してGPSを動かしてください。')};
@@ -1973,6 +1974,20 @@ $('timt').onclick=()=>{
 };
 // drawing
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// Gボールの散布図: 通ったGを点で残す（1秒に10点、最大10分ぶん）。点は別のキャンバスに足していき、毎回はそれを貼るだけにして軽くする
+const DOT_MAX=6000;
+const newDots=()=>({x:[],y:[],can:null,key:'',n:0});
+function dotsAdd(D,x,y){D.x.push(x);D.y.push(y);if(D.x.length>DOT_MAX+600){D.x.splice(0,600);D.y.splice(0,600);D.key=''}}
+function dotsClear(D){D.x.length=0;D.y.length=0;D.key=''}
+function dotsDraw(c,cvs,D,R,k,S,col,al){
+  if(!D||!D.x.length)return;
+  const sc=cvs.width/cvs.clientWidth,key=cvs.width+'|'+k+'|'+S+'|'+col+'|'+al;
+  if(!D.can||D.key!==key){D.can=D.can||document.createElement('canvas');D.can.width=cvs.width;D.can.height=cvs.height;D.key=key;D.n=0}
+  const o=D.can.getContext('2d'),r=Math.max(1.5,R*.011)*sc;o.fillStyle=col;o.globalAlpha=al;
+  for(let i=D.n;i<D.x.length;i++){let x=D.x[i]/S,y=D.y[i]/S;const m=Math.hypot(x,y);if(m>1){x/=m;y/=m}o.beginPath();o.arc((R+x*k)*sc,(R+y*k)*sc,r,0,7);o.fill()}
+  D.n=D.x.length;c.save();c.setTransform(1,0,0,1,0,0);c.drawImage(D.can,0,0);c.restore();
+}
+let DOTS=newDots(),dotT=0;
 function envAdd(en,x,y,m){const a=Math.atan2(y,x),b=Math.round((a+Math.PI)/(2*Math.PI)*72);for(let d=-3;d<=3;d++){const i=((b+d)%72+72)%72,v=m*Math.cos(d*Math.PI/12);if(v>en[i])en[i]=v}}
 // ===== デザイン（スキン）: 標準のほかに、レーシング（a）・アナログ計器（b）・HUD（c）。Gボールの描き方と配色を切り替える =====
 let SKIN='std';
@@ -2005,7 +2020,8 @@ function drawBallSkin(c,w,sc){
     c.strokeStyle='#1d2735';c.lineWidth=1.2;for(let i=1;i<=3;i++){c.beginPath();c.arc(R,R,k*i/3,0,7);c.stroke()}
     c.beginPath();c.moveTo(R-k,R);c.lineTo(R+k,R);c.moveTo(R,R-k);c.lineTo(R,R+k);c.stroke();
     c.fillStyle='#4b5a70';c.font='10px system-ui';c.textAlign='left';[1/3,2/3,1].forEach(q=>c.fillText(+(S*q).toFixed(2)+'G',R+4,R-k*q+11));
-    if(sc.peak>.02){envPath();c.globalAlpha=.10;c.fillStyle='#f43f5e';c.fill();c.globalAlpha=.7;c.strokeStyle='#f43f5e';c.lineWidth=1.3;c.stroke();c.globalAlpha=1}
+    dotsDraw(c,c.canvas,sc.dots,R,k,S,'#f43f5e',.32);
+    if(sc.peak>.02){envPath();c.globalAlpha=.8;c.strokeStyle='#f43f5e';c.lineWidth=1.4;c.stroke();c.globalAlpha=1}
     if(sc.trail.length>1){trailPath();c.lineJoin='round';c.lineCap='round';c.shadowColor='#22d3ee';c.shadowBlur=14;c.strokeStyle='rgba(34,211,238,.85)';c.lineWidth=3;c.stroke();c.lineCap='butt'}
     c.shadowBlur=20;c.shadowColor='#22d3ee';c.fillStyle='#e8fbff';c.beginPath();c.arc(BX,BY,R*.06,0,7);c.fill();c.shadowBlur=0;
     if(H){
@@ -2024,6 +2040,7 @@ function drawBallSkin(c,w,sc){
     c.beginPath();c.moveTo(R-k*1.1,R);c.lineTo(R+k*1.1,R);c.moveTo(R,R-k*1.1);c.lineTo(R,R+k*1.1);c.stroke();
     c.fillStyle='#b9ac93';c.font=Math.round(11*f)+'px system-ui';c.textAlign='center';c.fillText('減速',R,R-k*1.1-4);c.fillText('左',R-k*1.1-9,R+4);c.fillText('右',R+k*1.1+9,R+4);if(!H)c.fillText('加速',R,R+k*1.1+13);
     c.fillStyle='#8a7d66';c.font='10px system-ui';c.textAlign='left';[1/3,2/3,1].forEach(q=>c.fillText(+(S*q).toFixed(2),R+4,R-k*q+11));
+    dotsDraw(c,c.canvas,sc.dots,R,k,S,'#ea580c',.3);
     if(sc.peak>.02){envPath();c.setLineDash([3,3]);c.strokeStyle='#ea580c';c.lineWidth=1.5;c.stroke();c.setLineDash([])}
     sc.trail.forEach((p,i)=>{c.globalAlpha=i/sc.trail.length*.3;c.fillStyle='#e0a030';c.beginPath();c.arc(R+p.x/S*k,R+p.y/S*k,R*.022,0,7);c.fill()});c.globalAlpha=1;
     const br=R*.065;g=c.createRadialGradient(BX-br*.35,BY-br*.4,br*.1,BX,BY,br);g.addColorStop(0,'#fff3d0');g.addColorStop(.5,'#e0a030');g.addColorStop(1,'#7a4a08');c.fillStyle=g;c.beginPath();c.arc(BX,BY,br,0,7);c.fill();
@@ -2045,6 +2062,7 @@ function drawBallSkin(c,w,sc){
       [-10,-5,5,10].forEach(v=>{const y=-v*d;c.moveTo(-k*.27,y);c.lineTo(-k*.1,y);c.moveTo(k*.1,y);c.lineTo(k*.27,y);c.fillText(v,k*.3,y+3)});c.stroke();c.restore();
     }
     c.strokeStyle='#fff';c.lineWidth=1.5;c.beginPath();c.moveTo(R-12,R);c.lineTo(R-4,R);c.lineTo(R,R+5);c.lineTo(R+4,R);c.lineTo(R+12,R);c.stroke();
+    dotsDraw(c,c.canvas,sc.dots,R,k,S,'#ff2d2d',.35);
     if(sc.peak>.02){envPath();c.strokeStyle='rgba(255,45,45,.8)';c.lineWidth=1;c.stroke()}
     if(sc.trail.length>1){trailPath();c.strokeStyle='rgba(255,255,255,.5)';c.lineWidth=1.5;c.lineJoin='round';c.stroke()}
     c.fillStyle='#ff2d2d';c.beginPath();c.arc(BX,BY,R*.055,0,7);c.fill();
@@ -2074,11 +2092,11 @@ function drawBall(cvs,c,sc){
   c.globalAlpha=.9;c.fillStyle=ring;c.font='11px system-ui';c.textAlign='left';
   [.25,.5,.75,1].forEach(g=>c.fillText(+(S*g).toFixed(2)+'G',R+4,R-k*g-3));
   c.globalAlpha=1;
-  if(sc.peak>.02){
+  dotsDraw(c,cvs,sc.dots,R,k,S,pc,.3);   // 通ったGの点
+  if(sc.peak>.02){   // 最大の範囲は線だけ
     c.beginPath();
     sc.env.forEach((v,i)=>{const a=i/72*2*Math.PI-Math.PI,r=Math.min(v/S,1)*k,X=R+Math.cos(a)*r,Y=R+Math.sin(a)*r;i?c.lineTo(X,Y):c.moveTo(X,Y)});
-    c.closePath();c.globalAlpha=.14;c.fillStyle=pc;c.fill();c.globalAlpha=1;
-    c.strokeStyle=pc;c.lineWidth=2;c.stroke();
+    c.closePath();c.globalAlpha=.85;c.strokeStyle=pc;c.lineWidth=1.6;c.stroke();c.globalAlpha=1;
   }
   sc.trail.forEach((p,i)=>{c.globalAlpha=i/sc.trail.length*.35;c.fillStyle=ball;c.beginPath();c.arc(R+p.x/S*k,R+p.y/S*k,R*.025,0,7);c.fill()});
   c.globalAlpha=1;
@@ -2294,11 +2312,12 @@ function openL(L){
 $('vall').onclick=()=>{if(V&&VM)fitAll(VM,V.trk)};
 const vX=r=>V.raw&&r[12]!=null?r[12]:r[1],vY=r=>V.raw&&r[13]!=null?r[13]:r[2];   // 再生: 補正後／補正前のG
 $('vraw').onclick=()=>{if(!V)return;V.raw=!V.raw;$('vraw').classList.toggle('on',V.raw);$('vraw').textContent=V.raw?'補正前のG（表示中）':'補正前のG';
-  V.pts.forEach((p,i)=>{const r=V.rows[i];p.x=vX(r);p.y=-vY(r)});V.env.fill(0);V.peak=0;const i=V.i;V.i=-1;vseek(Math.max(0,i))};
+  V.pts.forEach((p,i)=>{const r=V.rows[i];p.x=vX(r);p.y=-vY(r)});V.env.fill(0);if(V.dots)dotsClear(V.dots);V.peak=0;const i=V.i;V.i=-1;vseek(Math.max(0,i))};
 $('vfol').onclick=()=>{if(!V||!VM)return;const cp=V.cur[V.i]||V.trk[0];if(cp)VM.map.setView([cp.la,cp.lo],Math.max(VM.map.getZoom(),16))};
 function vseek(i){
-  if(i<V.i){V.env.fill(0);V.peak=0;V.i=-1}
-  for(let j=V.i+1;j<=i;j++){const r=V.rows[j],x=vX(r),y=vY(r),m=V.raw&&r[12]!=null?Math.hypot(x,y):r[3];if(m>V.peak)V.peak=m;if(m>.02)envAdd(V.env,x,-y,m)}
+  if(!V.dots)V.dots=newDots();
+  if(i<V.i){V.env.fill(0);dotsClear(V.dots);V.peak=0;V.i=-1}
+  for(let j=V.i+1;j<=i;j++){const r=V.rows[j],x=vX(r),y=vY(r),m=V.raw&&r[12]!=null?Math.hypot(x,y):r[3];if(m>V.peak)V.peak=m;if(m>.02)envAdd(V.env,x,-y,m);if(m>.05)dotsAdd(V.dots,x,-y)}
   V.i=i;
 }
 // 動画の同期再生: 動画の時刻 = ログの時刻 − (録画開始のずれ + 手動調整)
@@ -2398,7 +2417,7 @@ function vframe(dt){
   }
   const r=V.rows[V.i],tm=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
   vseek(V.i);
-  drawBall(vc,vcx,{x:vX(r),y:-vY(r),S:nice(V.peak),peak:V.peak,env:V.env,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:vX(q),y:-vY(q)}))});
+  drawBall(vc,vcx,{x:vX(r),y:-vY(r),S:nice(V.peak),peak:V.peak,env:V.env,dots:V.dots,trail:V.rows.slice(Math.max(0,V.i-39),V.i+1).map(q=>({x:vX(q),y:-vY(q)}))});
   if(!gpz)vgFollow();
   if(vg.clientWidth)drawPanels(vgx,vg.clientWidth,V.pts,true,V.i,V.z);
   const cp=V.cur[V.i];
@@ -2847,6 +2866,7 @@ function loop(now){
   curM=Math.max(curM,m);
   S=nice(peak);
   if(!hold&&m>.02)envAdd(env,sg.x,sg.y,m);
+  if(!hold&&m>.05&&now-dotT>=100){dotT=now;dotsAdd(DOTS,sg.x,sg.y)}
   setVol(m);
   checkOver();
   trail.push({x:sg.x,y:sg.y});
@@ -2888,7 +2908,7 @@ function loop(now){
       if(rec){const r=scoreResult(scorer);el.textContent=r?'採点中　ジャーク '+r.jerk+'　丸み '+r.round+'　（暫定 '+r.total+'点）':'採点中（加減速や旋回が少ないため集計中）'}
       scBike=!!cfg.bike;const ad=$('adv'),ar=rec?scoreResult(scorer):null;ad.hidden=!ar;if(ar){const l=adviceList(ar);ad.textContent='アドバイス：'+(l[0]||'滑らかに運転できています。この調子です。')}
     }
-    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn&&!cfg.bike?slPct(SL.bx):0,bk:bkD,roll:cfg.bike?bkD:atD&&atD.r,pitch:atD&&atD.p}});if(SKIN==='a')ledSet(m/S);
+    drawBall(cv,ctx,{x:sg.x,y:sg.y,S,peak,env,dots:DOTS,trail,hud:{sp:gps.sp,m,over:overState,yaw:yawD,tilt:slOn,gr:slOn?slPct(SL.by):0,ca:slOn&&!cfg.bike?slPct(SL.bx):0,bk:bkD,roll:cfg.bike?bkD:atD&&atD.r,pitch:atD&&atD.p}});if(SKIN==='a')ledSet(m/S);
   }
   if(!$('pl').hidden){
     if(gc.clientWidth)drawPanels(gx,gc.clientWidth,hist,false);
