@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.10.3 (2026-11-21) 加速・制動（0-60・0-100km/h など）のタイムを読み上げない（画面の表示は今までどおり）
   2.10.2 (2026-11-20) Gボールの点: 停まっているとき（2km/h未満。GPSがないときは0.05G未満）の点は残さない
   2.10.1 (2026-11-20) Gボールの点を「最大値を消す」まで全部残す（止まっているときの点も残す）。向き合わせのボタンを設定からメーター画面（「0点」の横の「向き」）へ移動
   2.10.0 (2026-11-20) Gボール: 最大の範囲の塗りつぶしをやめ、通ったGを点（散布図）で残し、最大の範囲は線で重ねる（1秒に10点、最大10分ぶん。「最大値を消す」で消える）。再生画面も同じ
@@ -582,7 +583,7 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.10.2',APP_DATE='2026-11-11';
+const APP_VERSION='2.10.3',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -2796,7 +2797,7 @@ function perfLive(now){   // GPSの更新ごとに1回
   const lag=Date.now()-gps.ts,t=(now-(lag>0&&lag<3000?lag:0))/1000;
   perfFix(perfS,t,gps.sp,tt=>{for(let i=hist.length-1;i>=0&&hist[i].t>tt-4;i--)if(hist[i].t<=tt&&hist[i].y<0.05)return hist[i].t;return null});
   if(perfS.out.length>perfN){const o=perfS.out.slice(perfN);perfN=perfS.out.length;$('perf').innerHTML=perfHtml(perfS.out);$('perfw').hidden=false;
-    msg('計測: '+o.map(perfTxt).join('　'));if(cfg.lapVoice!==false)speakJa(o.map(x=>PERF_K[x.k].replace('km/h','').replace('-','から')+'、'+sayLap(x.t)).join('。'))}
+    msg('計測: '+o.map(perfTxt).join('　'))}   // 読み上げはしない（表示だけ）
 }
 // ===== 自動記録: 走り出したら記録を始め、しばらく止まったら保存する =====
 let arGo=null,arStop=null,recAuto=false;
