@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.9.0 (2026-11-20) 向き合わせ: 設定の「ブレーキ・加速で合わせる」を押して、まっすぐ走ってブレーキ（または加速）すると、置き方の向きの角度を自動で決める
   2.8.0 (2026-11-20) タブレットの画面に対応（幅700px以上）。縦向き: Gボールを大きく、左右G・前後G・ロール・ピッチを1列に。横向き: メーターはGボールと数値を左右に並べ、ラップ・ライブのログ・再生画面も2列に。文字とボタンも大きく
   2.7.2 (2026-11-20) 設定画面: いちばん上で下へスワイプすると閉じる。設定の外（周りに見えている画面）をタップしても閉じる
   2.7.1 (2026-11-20) ダブルタップで画面が拡大しないように（ボタンを続けて押したときなど。ピンチでの拡大と、地図のダブルタップでの拡大はそのまま）
@@ -548,7 +549,8 @@ dialog{width:min(92vw,540px)}
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set yawset"><span>置き方の向き <b id="yawv">0°</b> <small>スマホを水平方向に斜めに置いたとき、車の進行方向から何度ずれているか（上から見て右回りが＋）</small></span><span class="yawc"><button id="yawm" aria-label="1度左へ">−</button><input type="range" id="yawr" min="-180" max="180" step="1" aria-label="置き方の向き"><button id="yawp" aria-label="1度右へ">＋</button></span></div>
-<p class="mcap">合わせ方の目安：まっすぐ走ってブレーキを踏み、Gボールがまっすぐ上（減速）へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
+<div class="btns"><button id="ycal">ブレーキ・加速で合わせる</button></div>
+<p class="mcap">「開始」を押して走りながら使います。ボタンを押してから、まっすぐな道でしっかりブレーキ（または加速）すると、角度が自動で入ります。手で合わせるときは：ブレーキでGボールがまっすぐ上へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
 <div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
 <div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
 <div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
@@ -576,7 +578,7 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.8.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.9.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -727,6 +729,7 @@ function yawSet(v){   // 置き方の向きを変えたら、軸を作り直し�
   if(basis){basis=makeBasis(basis.g);slReset(true);sg={x:0,y:0,z:0};sgR={x:0,y:0};trail=[];clearMax()}
 }
 $('yawr').oninput=e=>yawSet(e.target.value);
+$('ycal').onclick=ycalStart;
 $('yawm').onclick=()=>yawSet((+cfg.yaw||0)-1);$('yawp').onclick=()=>yawSet((+cfg.yaw||0)+1);
 {const v=Math.max(-180,Math.min(180,Math.round(+cfg.yaw||0)));cfg.yaw=v;$('yawr').value=v;$('yawv').textContent=(v>0?'右':v<0?'左':'')+Math.abs(v)+'°'}
 // 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
@@ -822,7 +825,7 @@ async function start(){
 }
 function setRun(on){running=on;const b=$('start');b.textContent=on?'停止':'開始';b.classList.toggle('p',!on);b.classList.toggle('on',on)}
 let runTok=0;
-function stopAll(){runTok++;perfS.p=null;perfS.acc=perfS.brk=null;arGo=arStop=null;lapHalt();slReset(false);atF=null;removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;tlF=tlF1=null;yawRaw=yawF=yawF1=pitF=pitF1=rolF=rolF1=null;gyA.ex=gyA.fw=gyA.u=gyA.n=0;gyA.l=[0,0,0];try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
+function stopAll(){runTok++;if(YC){YC=null;ycalUi()}perfS.p=null;perfS.acc=perfS.brk=null;arGo=arStop=null;lapHalt();slReset(false);atF=null;removeEventListener('devicemotion',onMotion);sensor=false;raw={x:0,y:0,z:0};gf=null;tlF=tlF1=null;yawRaw=yawF=yawF1=pitF=pitF1=rolF=rolF1=null;gyA.ex=gyA.fw=gyA.u=gyA.n=0;gyA.l=[0,0,0];try{wl&&wl.release()}catch(e){}wl=null;stopGps();setRun(false);msg('停止しました。')}
 if(cfg.g0)basis=makeBasis(cfg.g0);
 $('start').onclick=async()=>{
   if(running){stopAll();return}
@@ -1700,6 +1703,7 @@ function gpsUi(){   // メーターの上の表示: GPSの状態と、自動記�
     if(gpsOk&&Date.now()-gpsAt>15000){gpsOk=false;msg('GPSが途切れました。')}   // 15秒以上、位置が届かない
     t=gpsOk?'GPS ±'+Math.round(gps.acc||0)+'m':wid!=null?(gpsAt?'GPS 途切れ':'GPS 測位中…'):'';
     if(cfg.autoRec&&!rec)t+=(t?'・':'')+'自動記録 待機中';
+    if(YC)t+=(t?'・':'')+'向き合わせ中';
   }else if(cfg.autoRec)t='自動記録は「開始」で待機';
   const e=$('gst');if(e._t!==t){e._t=t;e.textContent=t;e.classList.toggle('warn',running&&!gpsOk&&wid!=null)}
 }
@@ -2780,6 +2784,43 @@ function autoRec(now){
   if(!rec){if(sp!=null&&sp>=10){if(arGo==null)arGo=now;else if(now-arGo>2000){arGo=null;recStart(true)}}else if(sp!=null||(arGo!=null&&now-arGo>6000))arGo=null}   // 車速が一瞬取れないだけなら数え直さない
   else if(recAuto){if(sp==null||sp<2){if(arStop==null)arStop=now;else if(now-arStop>60000){arStop=null;recStop(true)}}else arStop=null}
 }
+// ===== 向き合わせ: まっすぐ走ってブレーキ（または加速）したときの水平方向のGの向きから「置き方の向き」を決める =====
+// ブレーキ中は、スマホが感じる水平方向のGが車の真後ろを向き、加速中は真前を向く。そのずれの角度を今の設定に足す。
+// ブレーキか加速かは GPS の車速の変化で見分ける（GPS がないときはブレーキとみなす）。曲がっているとき（ヨーレート 4°/s 以上）の区間は使わない
+let YC=null;
+function ycalStart(){
+  if(!running||!basis){msg('「開始」を押してから「ブレーキ・加速で合わせる」を押してください。');return}
+  if(YC){YC=null;msg('向き合わせをやめました。');ycalUi();return}
+  YC={t0:performance.now(),ev:null,gap:0};ycalUi();stClose();
+  msg('向き合わせ中：まっすぐな道で、しっかりブレーキ（0.2G以上、1秒ほど）を踏んでください。加速でも合わせられます。');
+  if(cfg.lapVoice!==false)speakJa('向き合わせを始めます。まっすぐ走って、しっかりブレーキを踏んでください');
+}
+function ycalUi(){$('ycal').textContent=YC?'向き合わせをやめる':'ブレーキ・加速で合わせる';$('ycal').classList.toggle('on',!!YC)}
+function ycalStep(lat,lon,dt,now){   // lat・lon＝今の設定の向きで見た、スマホの右・前の G（反転の設定をかける前）
+  if(!YC)return;
+  if(now-YC.t0>180000){YC=null;ycalUi();msg('向き合わせ：3分以内にブレーキ・加速が見つからなかったので、やめました。');return}
+  {const al=dt/(.15+dt);YC.fx=YC.fx==null?lat:YC.fx+(lat-YC.fx)*al;YC.fy=YC.fy==null?lon:YC.fy+(lon-YC.fy)*al;lat=YC.fx;lon=YC.fy}   // 振動を除く（約1Hzのローパス）
+  const m=Math.hypot(lat,lon),straight=yawF==null||Math.abs(yawF-SL.yb)<4,E=YC.ev;
+  if(m>.12&&straight){
+    if(!E)YC.ev={x:0,y:0,T:0,s:0,mx:0,sp0:gps.sp,g0:gps};
+    const e=YC.ev;e.x+=lat*dt;e.y+=lon*dt;e.T+=dt;e.s+=m*dt;e.mx=Math.max(e.mx,m);YC.gap=0;return;
+  }
+  if(!E)return;
+  YC.gap+=dt;if(YC.gap<.3)return;   // 0.3秒以上 G が弱い（または曲がっている）と、ひとまとまりの区切り
+  YC.ev=null;
+  const len=Math.hypot(E.x,E.y),mean=len/E.T,cons=len/E.s;   // cons＝向きのそろい具合（1＝ずっと同じ向き）
+  if(E.T<.6||mean<.15||cons<.9)return;   // 短い・弱い・向きがふらつくものは使わない
+  let brake=true;const dsp=E.sp0!=null&&gps.sp!=null&&gps!==E.g0?gps.sp-E.sp0:null;
+  if(dsp!=null){if(Math.abs(dsp)<2)return;brake=dsp<0}   // GPS があるのに車速がほとんど変わっていなければ、坂や段差の揺れとみなして使わない
+  else if(wid!=null&&gpsOk)return;
+  const d=Math.atan2(brake?E.x:-E.x,brake?-E.y:E.y)*180/Math.PI;   // 今の設定からのずれ（右回りが＋）
+  let v=(+cfg.yaw||0)+d;v=((v+540)%360)-180;
+  const fl=cfg.fx||cfg.fy;cfg.fx=cfg.fy=false;$('fx').checked=$('fy').checked=false;
+  YC=null;ycalUi();yawSet(v);
+  const lab=(cfg.yaw>0?'右':cfg.yaw<0?'左':'')+Math.abs(cfg.yaw)+'度';
+  msg('向きを合わせました：'+(cfg.yaw?(cfg.yaw>0?'右':'左')+Math.abs(cfg.yaw)+'°':'0°（ずれなし）')+'（'+(brake?'ブレーキ':'加速')+' '+mean.toFixed(2)+'G・'+E.T.toFixed(1)+'秒'+(dsp==null?'、GPSなしのためブレーキとみなしました':'')+'）。'+(fl?'左右反転・前後反転はオフにしました。':'')+'もう一度合わせると、ばらつきを確かめられます。');
+  if(cfg.lapVoice!==false)speakJa('向きを合わせました。'+(cfg.yaw?lab:'ずれはありません'));
+}
 // main loop
 function loop(now){
   let tx=0,ty=0,tz=0,lat=0,lon=0;
@@ -2790,6 +2831,7 @@ function loop(now){
     tx=-lat*(cfg.fx?-1:1);ty=lon*(cfg.fy?-1:1);   // ボールは体が押される向き（右カーブ→左、加速→下）
   }
   const dt=Math.min(Math.max((now-lastT)/1000,.001),.1);lastT=now;
+  if(sensor&&basis)ycalStep(lat,lon,dt,now);
   let rx=tx,ry=ty;
   if(sensor&&basis){slStep(lat,lon,dt,now);if(cfg.slope||cfg.bike){tx-=SL.bx;ty-=slSy()*SL.by;if(cfg.bike)tx/=SL.c}}   // 二輪: 横Gはセンサーにほぼ出ないので、傾きから求めた旋回G（水平方向）にする
   const yawD=yawLeft(),pitD=pitchUp(),rolD=rollRight(),trD=tiltRoll(),tpD=tiltPitch(),atD=attReal(now,dt),slOn=!!((cfg.slope||cfg.bike)&&SL.ok),bkD=slOn&&cfg.bike?SL.bk:null;   // ヨーレートの表示は左旋回＋
