@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.7.1 (2026-11-20) ダブルタップで画面が拡大しないように（ボタンを続けて押したときなど。ピンチでの拡大と、地図のダブルタップでの拡大はそのまま）
   2.7.0 (2026-11-20) スマホを水平方向に斜めに置いたとき用に「置き方の向き」を追加（設定。上から見て右回りにずらした角度を入れると、左右G・前後G・姿勢・勾配補正をすべて車の向きに直す）
   2.6.3 (2026-11-16) ホーム画面のアイコンから開いていて、ログもコースも空のときに、Safari とは保存場所が別であることと移し方を表示
   2.6.2 (2026-11-16) 修正: 「自動記録」と「GPSの測位を読み上げる」の設定が、設定画面ではなくラップタブの「コース設定」の中に入っていた（設定画面へ移動）。
@@ -131,6 +132,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
 #g,#vg{height:350px;border-radius:10px;margin-top:10px}
+html,body{touch-action:manipulation}   /* ダブルタップでの拡大をしない（ピンチでの拡大はできる） */
 #vg{touch-action:pan-y;cursor:crosshair;-webkit-user-select:none;user-select:none}
 #mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
 .mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
@@ -534,7 +536,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.7.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.7.1',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
