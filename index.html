@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.7.0 (2026-11-20) スマホを水平方向に斜めに置いたとき用に「置き方の向き」を追加（設定。上から見て右回りにずらした角度を入れると、左右G・前後G・姿勢・勾配補正をすべて車の向きに直す）
+  2.6.3 (2026-11-16) ホーム画面のアイコンから開いていて、ログもコースも空のときに、Safari とは保存場所が別であることと移し方を表示
   2.6.2 (2026-11-16) 修正: 「自動記録」と「GPSの測位を読み上げる」の設定が、設定画面ではなくラップタブの「コース設定」の中に入っていた（設定画面へ移動）。
                      「測位」の読み上げを「そくい」に
   2.6.1 (2026-11-16) GPSを測位したら音・読み上げ・表示で知らせる（途切れたときも表示。メーターの上に「GPS ±5m」）。セクションを通過したら、その時点のラップタイムを読み上げ、メーターにも表示。
@@ -162,6 +164,10 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .btns.main button{min-height:56px;font-size:1.05rem;font-weight:700}
 #dt{margin-top:12px}
 .row2s{grid-template-columns:repeat(2,1fr)}
+.yawset{flex-wrap:wrap}
+.yawc{display:flex;align-items:center;gap:6px;width:100%;margin-top:6px}
+.yawc input{flex:1}
+.yawc button{min-width:40px;padding:6px 0}
  #gg{display:block;width:min(100%,340px);aspect-ratio:1;margin:4px auto 0}
 .cnl{list-style:none;margin:8px 0 0;padding:0}
 .cnl li{border-top:1px solid var(--ring)}
@@ -439,6 +445,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <p class="note" style="margin-top:10px">⚠ このサイトを7日以上開かない場合、保存したログが消えることがあります。「すべてバックアップ」で、全部のログとコースを1つのファイルに書き出せます（動画は含みません）。</p>
 </div>
 </section>
+<p id="hnote" class="note" hidden>ホーム画面のアイコンから開いています。この開き方は Safari とは保存場所が別なので、Safari で記録したログやコースはここには出ません（消えてはいません）。<br>移すには：Safari でこのページを開く → ログタブ「すべてバックアップ」→ こちらのログタブ「バックアップから戻す」。</p>
 <p id="msg">「開始」を押すと、センサーとGPSが動き出し、傾きや加減速でボールが動きます。</p>
 </main>
 <div id="vw" hidden><div class="in">
@@ -498,6 +505,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="set"><span>音色</span><span><select id="tim" aria-label="音色"></select> <button id="timt">試聴</button></span></div>
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
+<div class="set yawset"><span>置き方の向き <b id="yawv">0°</b> <small>スマホを水平方向に斜めに置いたとき、車の進行方向から何度ずれているか（上から見て右回りが＋）</small></span><span class="yawc"><button id="yawm" aria-label="1度左へ">−</button><input type="range" id="yawr" min="-180" max="180" step="1" aria-label="置き方の向き"><button id="yawp" aria-label="1度右へ">＋</button></span></div>
+<p class="mcap">合わせ方の目安：まっすぐ走ってブレーキを踏み、Gボールがまっすぐ上（減速）へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
 <div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
 <div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
 <div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
@@ -525,7 +534,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.6.2',APP_DATE='2026-11-11';
+const APP_VERSION='2.7.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -534,7 +543,7 @@ let camS=null,camOn=false;
 const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const NICE=[.4,.8,1.2,2,4,8],nice=p=>NICE.find(v=>v>=Math.max(p*1.05,.3))||8;
 const GP=[['dt','タイム差'],['x','左右G'],['y','前後G'],['z','上下G'],['rot','回転'],['bank','バンク角'],['tilt','ロール・ピッチ角'],['sl','勾配・カント'],['sp','車速'],['alt','標高'],['pen','減点']];   // グラフの段（上からこの順）
-let cfg={autoRec:false,skin:'std',gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,tfc:.5,v:4};
+let cfg={yaw:0,autoRec:false,skin:'std',gp:['x','y','rot','sp'],lv:'saved',fc:2,thr:.5,snd:true,pitch:true,tim:'sine',over:true,margin:0,orb:true,orbDist:500,fx:false,fy:false,slope:false,yfc:2,tfc:.5,v:4};
 const saveCfg=()=>{try{localStorage.setItem('gm-set',JSON.stringify(cfg))}catch(e){}};
 try{const st=JSON.parse(localStorage.getItem('gm-set')||'{}')||{};if(st.v!==4){st.fc=2;st.v=4}Object.assign(cfg,st);cfg.yfc=Math.min(10,Math.max(.5,+cfg.yfc||2));cfg.tfc=Math.min(2,Math.max(.1,+cfg.tfc||.5));if(!Array.isArray(cfg.gp))cfg.gp=['x','y','rot','sp'];cfg.gp=cfg.gp.filter(k=>GP.some(p=>p[0]===k));if(!cfg.gp.length)cfg.gp=['x','y','rot','sp'];if(cfg.lv!=='live')cfg.lv='saved';saveCfg()}catch(e){}
 const sxv=()=>(ios?1:-1)*(cfg.fx?-1:1),syv=()=>(ios?-1:1)*(cfg.fy?-1:1);
@@ -597,6 +606,12 @@ async function swInit(){
   }catch(e){set('未対応（sw.js が見つかりません。index.html と同じ場所に置いてください）')}
 }
 swInit();
+// ホーム画面のアイコンから「Webアプリ」として開いたときは、Safari とは保存場所が別になる（ログ・コース・設定が空に見える）。空のときに案内を出す
+const isHomeApp=()=>navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+function homeAppNote(){
+  const e=$('hnote');if(!e)return;
+  e.hidden=!(isHomeApp()&&logsReady&&!saved.length&&!tracks.length);
+}
 const doUpdate=()=>{
   if(rec&&!confirm('記録中です。更新すると今の記録は保存されずに消えます。更新しますか？'))return;
   location.reload();
@@ -649,6 +664,14 @@ $('arec').checked=!!cfg.autoRec;$('arec').onchange=e=>{cfg.autoRec=e.target.chec
 $('skin').onchange=e=>{cfg.skin=e.target.value;saveCfg();skinApply();size()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();mirror(false,true)};
+function yawSet(v){   // 置き方の向きを変えたら、軸を作り直して勾配補正・最大値をやり直す
+  v=Math.max(-180,Math.min(180,Math.round(+v||0)));cfg.yaw=v;saveCfg();
+  $('yawr').value=v;$('yawv').textContent=(v>0?'右':v<0?'左':'')+Math.abs(v)+'°';
+  if(basis){basis=makeBasis(basis.g);slReset(true);sg={x:0,y:0,z:0};sgR={x:0,y:0};trail=[];clearMax()}
+}
+$('yawr').oninput=e=>yawSet(e.target.value);
+$('yawm').onclick=()=>yawSet((+cfg.yaw||0)-1);$('yawp').onclick=()=>yawSet((+cfg.yaw||0)+1);
+{const v=Math.max(-180,Math.min(180,Math.round(+cfg.yaw||0)));cfg.yaw=v;$('yawr').value=v;$('yawv').textContent=(v>0?'右':v<0?'左':'')+Math.abs(v)+'°'}
 // 反転したら、すでに描いたGの軌跡（点の尾・最大Gの輪郭・グラフ・記録中のログ）も同じ向きに反転する
 function mirror(mx,my){
   if(mx){sg.x=-sg.x;trail.forEach(p=>{p.x=-p.x});hist.forEach(p=>{p.x=-p.x});log.forEach(r=>{r[1]=-r[1]})}
@@ -696,7 +719,9 @@ function makeBasis(g){
   const ax=Math.abs(u.x)<.7?{x:1,y:0,z:0}:{x:0,y:-Math.sign(u.x),z:0};   // 横向き（スマホの左右の辺が縦）のときは上下の辺を使う
   const k=ax.x*u.x+ax.y*u.y+ax.z*u.z;
   let ex={x:ax.x-k*u.x,y:ax.y-k*u.y,z:ax.z-k*u.z};const l=Math.hypot(ex.x,ex.y,ex.z);ex={x:ex.x/l,y:ex.y/l,z:ex.z/l};
-  const fw={x:u.y*ex.z-u.z*ex.y,y:u.z*ex.x-u.x*ex.z,z:u.x*ex.y-u.y*ex.x};
+  let fw={x:u.y*ex.z-u.z*ex.y,y:u.z*ex.x-u.x*ex.z,z:u.x*ex.y-u.y*ex.x};
+  const ya=(+cfg.yaw||0)*Math.PI/180;   // 置き方の向き: スマホを上から見て右回りに ya だけずらして置いたとき、車の前・右はスマホの前・右を左回りに ya 戻した向き
+  if(ya){const c=Math.cos(ya),s=Math.sin(ya),e2={x:ex.x*c+fw.x*s,y:ex.y*c+fw.y*s,z:ex.z*c+fw.z*s},f2={x:fw.x*c-ex.x*s,y:fw.y*c-ex.y*s,z:fw.z*c-ex.z*s};ex=e2;fw=f2}
   return{g:{x:g.x,y:g.y,z:g.z},u,ex,fw};
 }
 function poseName(B){
@@ -706,13 +731,14 @@ function poseName(B){
   if(Math.abs(u.y)>.9)return'立て置き';
   return'斜め置き（約'+Math.round(Math.acos(Math.min(1,Math.abs(u.z)))*180/Math.PI)+'°）';
 }
+const yawTxt=()=>{const y=+cfg.yaw||0;return y?'・向き '+(y>0?'右':'左')+Math.abs(y)+'°':''};
 function calibrate(){
   const g=gf||raw,B=makeBasis(g);
   if(!B){msg('置き方を読み取れませんでした。スマホを動かさずに、もう一度「0点合わせ」を押してください。');return false}
   basis=B;cfg.g0=B.g;saveCfg();slReset(true);
   sg={x:0,y:0,z:0};sgR={x:0,y:0};trail=[];maxHold=performance.now()+500;   // 古い0点の値から0へ戻る途中で最大値を更新しない
   if(gf)env.fill(0);
-  msg('0点を合わせました（'+poseName(B)+'）。');
+  msg('0点を合わせました（'+poseName(B)+yawTxt()+'）。');
   return true;
 }
 function autoCal(){   // 前回の0点がなければ自動で合わせる。置き方が大きく変わっていて、しかも止まっているときも合わせ直す
@@ -909,6 +935,7 @@ function thumb(L){   // 一覧に出す、走った軌跡の小さな図
 function renderList(){
   if(!logsReady){$('list').innerHTML='<li><small>ログを読み込み中…</small></li>';return}
   const q=($('lq').value||'').trim().toLowerCase(),show=q?saved.filter(s=>(s.name+'\n'+(s.memo||'')).toLowerCase().includes(q)):saved;$('lq').hidden=saved.length<4&&!q;
+  try{homeAppNote()}catch(e){}
   $('list').innerHTML=show.length?show.map(s=>'<li class="lg"><button class="lgo" data-a="p" data-id="'+s.id+'">'+thumb(s)+'<div><b>'+esc(s.name)+'</b><small>'+fmtDur(s.dur)+'・最大 '+s.peak+' G'+(isBike(s)?'・二輪':'')+(s.vid?'・動画あり':'')+'</small>'+(s.memo?'<small class="memo">'+esc(s.memo.split('\n')[0])+'</small>':'')+'</div>'+(logScore(s)?'<span class="lgs"><b>'+s.score.total+'</b><small>点</small></span>':'<span></span>')+'</button><button class="lgm" data-a="m" data-id="'+s.id+'" aria-label="'+esc(s.name)+' のメニュー">⋯</button><div class="lgx" hidden><button data-a="c" data-id="'+s.id+'">CSV</button><button data-a="n" data-id="'+s.id+'">名前を変える</button><button data-a="d" data-id="'+s.id+'">削除</button></div></li>').join(''):'<li><small>'+(q?'「'+esc(q)+'」に合うログはありません。':'保存したログはまだありません。メーターの「記録開始」で記録できます。')+'</small></li>';
 }
 $('lq').oninput=renderList;
