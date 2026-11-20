@@ -4,6 +4,8 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.7.2 (2026-11-20) 設定画面: いちばん上で下へスワイプすると閉じる。設定の外（周りに見えている画面）をタップしても閉じる
+  2.7.1 (2026-11-20) ダブルタップで画面が拡大しないように（ボタンを続けて押したときなど。ピンチでの拡大と、地図のダブルタップでの拡大はそのまま）
   2.7.0 (2026-11-20) スマホを水平方向に斜めに置いたとき用に「置き方の向き」を追加（設定。上から見て右回りにずらした角度を入れると、左右G・前後G・姿勢・勾配補正をすべて車の向きに直す）
   2.6.3 (2026-11-16) ホーム画面のアイコンから開いていて、ログもコースも空のときに、Safari とは保存場所が別であることと移し方を表示
   2.6.2 (2026-11-16) 修正: 「自動記録」と「GPSの測位を読み上げる」の設定が、設定画面ではなくラップタブの「コース設定」の中に入っていた（設定画面へ移動）。
@@ -131,6 +133,7 @@ h2{font-size:.95rem;margin:18px 0 6px}
 .corner{position:absolute;left:0;bottom:0;display:flex;flex-direction:column;gap:6px}
 .corner button{padding:6px 9px;font-size:.75rem}
 #g,#vg{height:350px;border-radius:10px;margin-top:10px}
+html,body{touch-action:manipulation}   /* ダブルタップでの拡大をしない（ピンチでの拡大はできる） */
 #vg{touch-action:pan-y;cursor:crosshair;-webkit-user-select:none;user-select:none}
 #mp,#vm{height:300px;border-radius:10px;margin-top:10px;background:var(--panel);z-index:0;overflow:hidden}
 .mcap{color:var(--mut);font-size:.75rem;margin:4px 2px 0}
@@ -294,11 +297,14 @@ li small{display:block;color:var(--mut)}
 #vw{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5;padding-top:env(safe-area-inset-top,0px)}
 #vr{text-align:center;font-variant-numeric:tabular-nums;margin:4px 0}
 input[type=range]{width:100%}
-dialog{border:1px solid var(--ring);border-radius:16px;background:var(--panel);color:var(--fg);width:min(92vw,420px);padding:16px;max-height:86vh;max-height:86dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+dialog{box-sizing:border-box;border:1px solid var(--ring);border-radius:16px;background:var(--panel);color:var(--fg);width:min(92vw,420px);padding:16px;max-height:86vh;max-height:86dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 dialog input[type=range]{touch-action:pan-y}
 html.lock,html.lock body{overflow:hidden}
 html.lock body{position:fixed;left:0;right:0}
 dialog::backdrop{background:rgba(0,0,0,.5)}
+#st h2:focus{outline:none}
+#st .grab{width:40px;height:5px;border-radius:3px;background:var(--mut);opacity:.5;margin:-6px auto 10px}
+#st.drag{transition:none}#st.back{transition:transform .2s ease}
 .set{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--ring)}
 .set input[type=checkbox]{width:22px;height:22px}
 .set input[type=range]{width:45%}
@@ -495,6 +501,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </div>
 <canvas id="camrc" aria-hidden="true" style="position:fixed;left:-10000px;top:0;width:10px;height:10px"></canvas>
 <dialog id="st">
+<div class="grab" aria-hidden="true"></div>
 <h2 style="margin-top:0">設定</h2>
 <div class="set"><span>警告音 <small>停車中（2km/h未満）は鳴らしません</small></span><input type="checkbox" id="snd" aria-label="警告音"></div>
 <div class="set"><span>制限速度超過で通知</span><input type="checkbox" id="over" aria-label="速度超過の通知"></div>
@@ -534,7 +541,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.7.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.7.2',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -625,7 +632,22 @@ $('gear').onclick=()=>{
   const d=$('st');scrLock(true);d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
-$('stx').onclick=()=>{const d=$('st');d.close?d.close():d.removeAttribute('open');scrLock(false)};
+function stClose(){const d=$('st');d.style.transform='';d.close?d.close():d.removeAttribute('open');scrLock(false)}
+$('stx').onclick=stClose;
+// 設定の外（周りに見えている計器画面）をタップしたら閉じる
+$('st').addEventListener('click',e=>{if(e.target!==e.currentTarget)return;const r=e.currentTarget.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)stClose()});
+// いちばん上までスクロールした状態で下へスワイプしたら閉じる（指について下へずれ、途中で離すと戻る）
+{const d=$('st');let y0=null,t0=0,dy=0,on=false;
+  d.addEventListener('touchstart',e=>{if(e.touches.length!==1||d.scrollTop>0||e.target.closest('input[type=range],select,textarea')){y0=null;return}y0=e.touches[0].clientY;t0=performance.now();dy=0;on=false},{passive:true});
+  d.addEventListener('touchmove',e=>{if(y0==null)return;dy=e.touches[0].clientY-y0;
+    if(!on){if(dy>8&&d.scrollTop<=0){on=true;d.classList.remove('back');d.classList.add('drag')}else if(dy<-4||d.scrollTop>0){y0=null;return}}
+    if(on){e.preventDefault();d.style.transform='translateY('+Math.max(0,dy-8)+'px)'}},{passive:false});
+  const end=()=>{if(y0==null)return;y0=null;if(!on)return;on=false;d.classList.remove('drag');
+    const v=dy/Math.max(1,performance.now()-t0);   // px/ms
+    if(dy>110||(dy>40&&v>.6)){d.classList.add('back');d.style.transform='translateY(100vh)';setTimeout(()=>{d.classList.remove('back');stClose()},180)}
+    else{d.classList.add('back');d.style.transform='';setTimeout(()=>d.classList.remove('back'),220)}};
+  d.addEventListener('touchend',end);d.addEventListener('touchcancel',end);
+}
 function scrLock(on){   // 設定を開いている間は裏の画面をスクロールさせない（iPhoneで裏が動くのを防ぐ）
   const h=document.documentElement,b=document.body;
   if(on){if(h.classList.contains('lock'))return;scrLock.y=scrollY;b.style.top=-scrLock.y+'px';h.classList.add('lock')}
