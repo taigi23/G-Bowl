@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.10.2 (2026-11-20) Gボールの点: 停まっているとき（2km/h未満。GPSがないときは0.05G未満）の点は残さない
   2.10.1 (2026-11-20) Gボールの点を「最大値を消す」まで全部残す（止まっているときの点も残す）。向き合わせのボタンを設定からメーター画面（「0点」の横の「向き」）へ移動
   2.10.0 (2026-11-20) Gボール: 最大の範囲の塗りつぶしをやめ、通ったGを点（散布図）で残し、最大の範囲は線で重ねる（1秒に10点、最大10分ぶん。「最大値を消す」で消える）。再生画面も同じ
   2.9.0 (2026-11-20) 向き合わせ: 設定の「ブレーキ・加速で合わせる」を押して、まっすぐ走ってブレーキ（または加速）すると、置き方の向きの角度を自動で決める
@@ -581,7 +582,7 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.10.1',APP_DATE='2026-11-11';
+const APP_VERSION='2.10.2',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -2318,7 +2319,7 @@ $('vfol').onclick=()=>{if(!V||!VM)return;const cp=V.cur[V.i]||V.trk[0];if(cp)VM.
 function vseek(i){
   if(!V.dots)V.dots=newDots();
   if(i<V.i){V.env.fill(0);dotsClear(V.dots);V.peak=0;V.i=-1}
-  for(let j=V.i+1;j<=i;j++){const r=V.rows[j],x=vX(r),y=vY(r),m=V.raw&&r[12]!=null?Math.hypot(x,y):r[3];if(m>V.peak)V.peak=m;if(m>.02)envAdd(V.env,x,-y,m);dotsAdd(V.dots,x,-y)}
+  for(let j=V.i+1;j<=i;j++){const r=V.rows[j],x=vX(r),y=vY(r),m=V.raw&&r[12]!=null?Math.hypot(x,y):r[3];if(m>V.peak)V.peak=m;if(m>.02)envAdd(V.env,x,-y,m);if(!(r[4]!=null?r[4]<2:m<.05))dotsAdd(V.dots,x,-y)}
   V.i=i;
 }
 // 動画の同期再生: 動画の時刻 = ログの時刻 − (録画開始のずれ + 手動調整)
@@ -2867,7 +2868,7 @@ function loop(now){
   curM=Math.max(curM,m);
   S=nice(peak);
   if(!hold&&m>.02)envAdd(env,sg.x,sg.y,m);
-  if(!hold&&sensor&&now-dotT>=100){dotT=now;dotsAdd(DOTS,sg.x,sg.y)}
+  if(!hold&&sensor&&now-dotT>=100&&!(gps.sp!=null?gps.sp<2:m<.05)){dotT=now;dotsAdd(DOTS,sg.x,sg.y)}   // 停まっているとき（2km/h未満。GPSがなければ0.05G未満）の点は残さない
   setVol(m);
   checkOver();
   trail.push({x:sg.x,y:sg.y});
