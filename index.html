@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.10.1 (2026-11-20) Gボールの点を「最大値を消す」まで全部残す（止まっているときの点も残す）。向き合わせのボタンを設定からメーター画面（「0点」の横の「向き」）へ移動
   2.10.0 (2026-11-20) Gボール: 最大の範囲の塗りつぶしをやめ、通ったGを点（散布図）で残し、最大の範囲は線で重ねる（1秒に10点、最大10分ぶん。「最大値を消す」で消える）。再生画面も同じ
   2.9.0 (2026-11-20) 向き合わせ: 設定の「ブレーキ・加速で合わせる」を押して、まっすぐ走ってブレーキ（または加速）すると、置き方の向きの角度を自動で決める
   2.8.0 (2026-11-20) タブレットの画面に対応（幅700px以上）。縦向き: Gボールを大きく、左右G・前後G・ロール・ピッチを1列に。横向き: メーターはGボールと数値を左右に並べ、ラップ・ライブのログ・再生画面も2列に。文字とボタンも大きく
@@ -165,8 +166,9 @@ html,body{touch-action:manipulation}   /* ダブルタップでの拡大をし�
 .rdot,.rdot b{color:var(--peak)}
 .gst{flex:1;text-align:center;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gst.warn{color:var(--peak)}
-.btns.main{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:10px}
-.btns.main #cal{padding:0 18px}
+.btns.main{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;margin-top:10px}
+.btns.main #cal,.btns.main #ycal{padding:0 14px}
+@media (max-width:374px){.btns.main{gap:6px}.btns.main button{padding:0 6px;font-size:1rem}.btns.main #cal,.btns.main #ycal{padding:0 10px}}
 .btns.main button{min-height:56px;font-size:1.05rem;font-weight:700}
 #dt{margin-top:12px}
 .row2s{grid-template-columns:repeat(2,1fr)}
@@ -398,6 +400,7 @@ dialog{width:min(92vw,540px)}
 <button class="p" id="start">開始</button>
 <button id="rec">記録開始</button>
 <button id="cal" aria-label="0点合わせ">0点</button>
+<button id="ycal" aria-label="ブレーキ・加速で向き合わせ">向き</button>
 </div>
 <details id="dt"><summary><span>最大 <b id="pks">0.00</b> G</span><span class="dtl">詳細</span></summary>
 <div class="row">
@@ -550,8 +553,7 @@ dialog{width:min(92vw,540px)}
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set yawset"><span>置き方の向き <b id="yawv">0°</b> <small>スマホを水平方向に斜めに置いたとき、車の進行方向から何度ずれているか（上から見て右回りが＋）</small></span><span class="yawc"><button id="yawm" aria-label="1度左へ">−</button><input type="range" id="yawr" min="-180" max="180" step="1" aria-label="置き方の向き"><button id="yawp" aria-label="1度右へ">＋</button></span></div>
-<div class="btns"><button id="ycal">ブレーキ・加速で合わせる</button></div>
-<p class="mcap">「開始」を押して走りながら使います。ボタンを押してから、まっすぐな道でしっかりブレーキ（または加速）すると、角度が自動で入ります。手で合わせるときは：ブレーキでGボールがまっすぐ上へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
+<p class="mcap">メーター画面の「向き」ボタンを押して、まっすぐな道でしっかりブレーキ（または加速）すると、角度が自動で入ります。手で合わせるときは：ブレーキでGボールがまっすぐ上へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
 <div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
 <div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
 <div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
@@ -579,7 +581,7 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.10.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.10.1',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -1974,10 +1976,9 @@ $('timt').onclick=()=>{
 };
 // drawing
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-// Gボールの散布図: 通ったGを点で残す（1秒に10点、最大10分ぶん）。点は別のキャンバスに足していき、毎回はそれを貼るだけにして軽くする
-const DOT_MAX=6000;
+// Gボールの散布図: 通ったGを点で残す（1秒に10点、「最大値を消す」まで全部）。点は別のキャンバスに足していき、毎回はそれを貼るだけにして軽くする
 const newDots=()=>({x:[],y:[],can:null,key:'',n:0});
-function dotsAdd(D,x,y){D.x.push(x);D.y.push(y);if(D.x.length>DOT_MAX+600){D.x.splice(0,600);D.y.splice(0,600);D.key=''}}
+function dotsAdd(D,x,y){D.x.push(x);D.y.push(y)}
 function dotsClear(D){D.x.length=0;D.y.length=0;D.key=''}
 function dotsDraw(c,cvs,D,R,k,S,col,al){
   if(!D||!D.x.length)return;
@@ -2317,7 +2318,7 @@ $('vfol').onclick=()=>{if(!V||!VM)return;const cp=V.cur[V.i]||V.trk[0];if(cp)VM.
 function vseek(i){
   if(!V.dots)V.dots=newDots();
   if(i<V.i){V.env.fill(0);dotsClear(V.dots);V.peak=0;V.i=-1}
-  for(let j=V.i+1;j<=i;j++){const r=V.rows[j],x=vX(r),y=vY(r),m=V.raw&&r[12]!=null?Math.hypot(x,y):r[3];if(m>V.peak)V.peak=m;if(m>.02)envAdd(V.env,x,-y,m);if(m>.05)dotsAdd(V.dots,x,-y)}
+  for(let j=V.i+1;j<=i;j++){const r=V.rows[j],x=vX(r),y=vY(r),m=V.raw&&r[12]!=null?Math.hypot(x,y):r[3];if(m>V.peak)V.peak=m;if(m>.02)envAdd(V.env,x,-y,m);dotsAdd(V.dots,x,-y)}
   V.i=i;
 }
 // 動画の同期再生: 動画の時刻 = ログの時刻 − (録画開始のずれ + 手動調整)
@@ -2808,13 +2809,13 @@ function autoRec(now){
 // ブレーキか加速かは GPS の車速の変化で見分ける（GPS がないときはブレーキとみなす）。曲がっているとき（ヨーレート 4°/s 以上）の区間は使わない
 let YC=null;
 function ycalStart(){
-  if(!running||!basis){msg('「開始」を押してから「ブレーキ・加速で合わせる」を押してください。');return}
+  if(!running||!basis){msg('向き合わせ：「開始」を押して走りながら使います。押したあと、まっすぐな道でしっかりブレーキ（または加速）すると、スマホの置き方の向きを自動で合わせます。');return}
   if(YC){YC=null;msg('向き合わせをやめました。');ycalUi();return}
   YC={t0:performance.now(),ev:null,gap:0};ycalUi();stClose();
   msg('向き合わせ中：まっすぐな道で、しっかりブレーキ（0.2G以上、1秒ほど）を踏んでください。加速でも合わせられます。');
   if(cfg.lapVoice!==false)speakJa('向き合わせを始めます。まっすぐ走って、しっかりブレーキを踏んでください');
 }
-function ycalUi(){$('ycal').textContent=YC?'向き合わせをやめる':'ブレーキ・加速で合わせる';$('ycal').classList.toggle('on',!!YC)}
+function ycalUi(){$('ycal').textContent=YC?'中止':'向き';$('ycal').classList.toggle('on',!!YC)}
 function ycalStep(lat,lon,dt,now){   // lat・lon＝今の設定の向きで見た、スマホの右・前の G（反転の設定をかける前）
   if(!YC)return;
   if(now-YC.t0>180000){YC=null;ycalUi();msg('向き合わせ：3分以内にブレーキ・加速が見つからなかったので、やめました。');return}
@@ -2866,7 +2867,7 @@ function loop(now){
   curM=Math.max(curM,m);
   S=nice(peak);
   if(!hold&&m>.02)envAdd(env,sg.x,sg.y,m);
-  if(!hold&&m>.05&&now-dotT>=100){dotT=now;dotsAdd(DOTS,sg.x,sg.y)}
+  if(!hold&&sensor&&now-dotT>=100){dotT=now;dotsAdd(DOTS,sg.x,sg.y)}
   setVol(m);
   checkOver();
   trail.push({x:sg.x,y:sg.y});
