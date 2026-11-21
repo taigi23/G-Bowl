@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.12.0 (2026-11-21) 設定をタブで分類（音／取り付け／記録・表示／警告／その他）。「ラップタイムを読み上げる」をコース設定から設定の「音」へ移動
   2.11.0 (2026-11-21) 設定に「読み上げ」を追加。オフにすると読み上げの代わりに短い音で知らせ、ほかのアプリの音楽を止めない（音はマナーモードでは鳴らない）。オフの間は、タップのたびの読み上げの準備もしない
   2.10.3 (2026-11-21) 加速・制動（0-60・0-100km/h など）のタイムを読み上げない（画面の表示は今までどおり）
   2.10.2 (2026-11-20) Gボールの点: 停まっているとき（2km/h未満。GPSがないときは0.05G未満）の点は残さない
@@ -310,6 +311,11 @@ dialog input[type=range]{touch-action:pan-y}
 html.lock,html.lock body{overflow:hidden}
 html.lock body{position:fixed;left:0;right:0}
 dialog::backdrop{background:rgba(0,0,0,.5)}
+.sttabs{position:sticky;top:-16px;z-index:2;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:0 -4px 10px;padding:6px 4px;background:var(--panel);border-bottom:1px solid var(--ring)}
+.sttabs button{padding:8px 0;font-size:.8rem;border-radius:8px;border:0;background:none;color:var(--mut);white-space:nowrap}
+.sttabs button.on{background:var(--btn);color:var(--btnfg)}
+.stp[hidden]{display:none}
+#st{height:min(86vh,780px);height:min(86dvh,780px)}   /* タブを切り替えても設定の大きさが変わらないように */
 #st h2:focus{outline:none}
 #st .grab{width:40px;height:5px;border-radius:3px;background:var(--mut);opacity:.5;margin:-6px auto 10px}
 #st.drag{transition:none}#st.back{transition:transform .2s ease}
@@ -470,7 +476,6 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button id="tfol">現在地</button><button id="tflip">向きを反転</button><button id="tcancel">やめる</button><button class="p" id="tsave">保存</button></div>
 </div>
 <div class="set"><span>ラインの幅 <b><span id="trwv">30</span> m</b></span><input type="range" id="trw" min="10" max="80" step="5" aria-label="ラインの幅"></div>
-<div class="set"><span>ラップタイムを読み上げる <small>ラップと、セクション通過時のタイム</small></span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
 <p class="mcap">「地図で新しく作る」では、地図をタップしてスタートとゴールの線を置けます（周回と、スタートとゴールが別の区間を選べます）。「今いる場所を…」は、走りながら、スタート／ゴールにしたい場所を通過する瞬間に押すと、そこを進む向きに垂直なラインとして登録し、その瞬間からラップ1を計ります。ログ再生画面の「ラップ」からも、再生位置をラインにできます。iPhoneのGPSは1秒に1回程度なので、通過した時刻は前後の位置から補間して求めます（ずれの目安 ±0.1〜0.3秒）。</p>
 </details>
 </section>
@@ -546,28 +551,37 @@ dialog{width:min(92vw,540px)}
 <dialog id="st">
 <div class="grab" aria-hidden="true"></div>
 <h2 style="margin-top:0">設定</h2>
+<div class="sttabs" role="tablist"><button data-p="snd" role="tab">音</button><button data-p="mount" role="tab">取り付け</button><button data-p="rec" role="tab">記録・表示</button><button data-p="warn" role="tab">警告</button><button data-p="etc" role="tab">その他</button></div>
+<section class="stp" data-p="snd" role="tabpanel">
+<div class="set"><span>読み上げ <small>オフにすると、読み上げの代わりに短い音で知らせます。iPhoneでは読み上げのたびにほかのアプリの音楽が止まるので、音楽を聴きながら使うときはオフにしてください（短い音はマナーモードのときは鳴りません）</small></span><input type="checkbox" id="voice" aria-label="読み上げ"></div>
 <div class="set"><span>警告音 <small>停車中（2km/h未満）は鳴らしません</small></span><input type="checkbox" id="snd" aria-label="警告音"></div>
-<div class="set"><span>制限速度超過で通知</span><input type="checkbox" id="over" aria-label="速度超過の通知"></div>
-<div class="set"><span>通知のタイミング <b>+<span id="mgv">0</span> km/h</b></span><input type="range" id="mg" min="0" max="50" step="5" aria-label="制限速度からの超過量"></div>
 <div class="set"><span>音が鳴り始めるG <b><span id="thrv">0.5</span> G</b></span><input type="range" id="thr" min="0" max="1" step="0.1" aria-label="音が鳴り始めるG"></div>
 <div class="set"><span>Gに合わせて音階を上げる</span><input type="checkbox" id="pit" aria-label="Gに合わせて音階を上げる"></div>
 <div class="set"><span>音階の変え方</span><select id="pmode" aria-label="音階の変え方"><option value="smooth">なめらか</option><option value="step">半音ずつ</option></select></div>
 <div class="set"><span>音色</span><span><select id="tim" aria-label="音色"></select> <button id="timt">試聴</button></span></div>
+<div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
+<div class="set"><span>ラップタイムを読み上げる <small>ラップと、セクション通過時のタイム</small></span><input type="checkbox" id="lapv" aria-label="ラップタイムを読み上げる"></div>
+</section>
+<section class="stp" data-p="mount" role="tabpanel">
 <div class="set"><span>左右反転</span><input type="checkbox" id="fx"></div>
 <div class="set"><span>前後反転</span><input type="checkbox" id="fy"></div>
 <div class="set yawset"><span>置き方の向き <b id="yawv">0°</b> <small>スマホを水平方向に斜めに置いたとき、車の進行方向から何度ずれているか（上から見て右回りが＋）</small></span><span class="yawc"><button id="yawm" aria-label="1度左へ">−</button><input type="range" id="yawr" min="-180" max="180" step="1" aria-label="置き方の向き"><button id="yawp" aria-label="1度右へ">＋</button></span></div>
 <p class="mcap">メーター画面の「向き」ボタンを押して、まっすぐな道でしっかりブレーキ（または加速）すると、角度が自動で入ります。手で合わせるときは：ブレーキでGボールがまっすぐ上へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
-<div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
-<div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
-<div class="set"><span>読み上げ <small>オフにすると、読み上げの代わりに短い音で知らせます。iPhoneでは読み上げのたびにほかのアプリの音楽が止まるので、音楽を聴きながら使うときはオフにしてください（短い音はマナーモードのときは鳴りません）</small></span><input type="checkbox" id="voice" aria-label="読み上げ"></div>
-<div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
 <div class="set"><span>二輪モード（ベータ） <small>バイク用。車体の傾き（バンク角）を推定し、左右Gを旋回Gとして表示・記録・採点する</small></span><input type="checkbox" id="bike" aria-label="二輪モード"></div>
 <p class="mcap" id="bikest" hidden>GPSの車速が必要です。0点合わせは車体をまっすぐ立てた状態で行うのが確実ですが、サイドスタンドで合わせても、20km/h以上で直進している間に「直立」を自動で覚えます。勾配の補正は常にオンになります。ベータ版のため、バンク角や採点の基準は今後変わることがあります。</p>
 <div class="set"><span>勾配補正 <small>坂道やカント（路面の横の傾き）で出るGを、GPSの車速とジャイロから推定して差し引く</small></span><input type="checkbox" id="slp" aria-label="勾配補正"></div>
 <p class="mcap" id="slpst">勾配は「上り＋」、カントは「右下がり＋」です。傾きの変化はジャイロですぐに追い、GPSの車速・ヨーレートとの差でゆっくり直します。GPSが途切れている間は直前の値を保ちます。</p>
+</section>
+<section class="stp" data-p="rec" role="tabpanel">
+<div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
+<div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
 <div class="set"><span>LPF <b><span id="fcv">2</span> Hz</b></span><input type="range" id="fc" min="0.5" max="20" step="0.5" aria-label="カットオフ周波数"></div>
 <div class="set"><span>ヨーレートのLPF <b><span id="yfcv">2</span> Hz</b></span><input type="range" id="yfc" min="0.5" max="10" step="0.5" aria-label="ヨーレートのカットオフ周波数"></div>
 <div class="set"><span>傾きのLPF <b><span id="tfcv">0.5</span> Hz</b> <small>ロール・ピッチ角の表示（上げるほど速く追う）</small></span><input type="range" id="tfc" min="0.1" max="2" step="0.1" aria-label="傾きのカットオフ周波数"></div>
+</section>
+<section class="stp" data-p="warn" role="tabpanel">
+<div class="set"><span>制限速度超過で通知</span><input type="checkbox" id="over" aria-label="速度超過の通知"></div>
+<div class="set"><span>通知のタイミング <b>+<span id="mgv">0</span> km/h</b></span><input type="range" id="mg" min="0" max="50" step="5" aria-label="制限速度からの超過量"></div>
 <div class="set"><span>制限速度の接続テスト</span><button id="ltest">テスト</button></div>
 <p class="mcap" id="limst"></p>
 <p class="mcap">制限の欄：「…」取得中　「×」取得エラー　「?」道はあるが制限速度が地図データに未登録　「--」近くに道が見つからない</p>
@@ -577,15 +591,18 @@ dialog{width:min(92vw,540px)}
 <div class="set"><span>自分のオービス一覧 <small id="ocnt"></small></span><span><button id="oimp">読み込む</button> <button id="oclr">消す</button></span><input type="file" id="oimpf" accept=".csv,text/csv,text/plain" hidden></div>
 <p class="mcap" id="orbst"></p>
 <p class="mcap">オービスは、地図データ（OpenStreetMap）に登録された地点と、読み込んだ一覧（1行に「緯度,経度,名前」または「緯度,経度,向き,名前」のCSV。向きは進む方角の度数で、北=0・東=90）を使います。進行方向の前方にあり、向きが登録されていれば自分の進む向きと合うものだけ知らせます。地図データの登録は一部だけなので、すべてのオービスで鳴るわけではありません。</p>
+</section>
+<section class="stp" data-p="etc" role="tabpanel">
 <p class="mcap" id="stor"></p>
 <p class="mcap" id="ver"></p>
 <div class="btns" style="margin-top:4px"><button id="updc">更新を確認</button><button class="p" id="updn" hidden>更新する</button></div>
 <p class="mcap" id="upst"></p>
 <p class="mcap" id="offst"></p>
+</section>
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.11.0',APP_DATE='2026-11-11';
+const APP_VERSION='2.12.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -676,6 +693,14 @@ $('gear').onclick=()=>{
   const d=$('st');scrLock(true);d.showModal?d.showModal():d.setAttribute('open','');
   const h=d.querySelector('h2');h.tabIndex=-1;h.focus({preventScroll:true});
 };
+function stTab(p){   // 設定の中のタブ（音／取り付け／記録・表示／警告／その他）
+  if(!document.querySelector('.stp[data-p="'+p+'"]'))p='snd';
+  document.querySelectorAll('.stp').forEach(e=>e.hidden=e.dataset.p!==p);
+  document.querySelectorAll('.sttabs button').forEach(b=>{const on=b.dataset.p===p;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)});
+  cfg.stTab=p;saveCfg();$('st').scrollTop=0;
+}
+document.querySelector('.sttabs').onclick=e=>{const b=e.target.closest('button');if(b)stTab(b.dataset.p)};
+stTab(cfg.stTab||'snd');
 function stClose(){const d=$('st');d.style.transform='';d.close?d.close():d.removeAttribute('open');scrLock(false)}
 $('stx').onclick=stClose;
 // 設定の外（周りに見えている計器画面）をタップしたら閉じる
