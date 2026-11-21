@@ -4,6 +4,7 @@
   バージョンの付け方: 機能の追加・変更 → 真ん中の数字を上げる（1.0.0 → 1.1.0）
                       不具合の修正     → 最後の数字を上げる（1.1.0 → 1.1.1）
   更新履歴:
+  2.11.0 (2026-11-21) 設定に「読み上げ」を追加。オフにすると読み上げの代わりに短い音で知らせ、ほかのアプリの音楽を止めない（音はマナーモードでは鳴らない）。オフの間は、タップのたびの読み上げの準備もしない
   2.10.3 (2026-11-21) 加速・制動（0-60・0-100km/h など）のタイムを読み上げない（画面の表示は今までどおり）
   2.10.2 (2026-11-20) Gボールの点: 停まっているとき（2km/h未満。GPSがないときは0.05G未満）の点は残さない
   2.10.1 (2026-11-20) Gボールの点を「最大値を消す」まで全部残す（止まっているときの点も残す）。向き合わせのボタンを設定からメーター画面（「0点」の横の「向き」）へ移動
@@ -558,6 +559,7 @@ dialog{width:min(92vw,540px)}
 <p class="mcap">メーター画面の「向き」ボタンを押して、まっすぐな道でしっかりブレーキ（または加速）すると、角度が自動で入ります。手で合わせるときは：ブレーキでGボールがまっすぐ上へ動けば合っています。斜めに動くときは、動いた向きと反対へ回してください。</p>
 <div class="set"><span>自動記録 <small>10km/h以上で走り出したら記録を始め、1分止まったら保存する（「開始」を押している間だけ）</small></span><input type="checkbox" id="arec" aria-label="自動記録"></div>
 <div class="set"><span>GPSの測位を読み上げる</span><input type="checkbox" id="gpsv" aria-label="GPSの測位を読み上げる"></div>
+<div class="set"><span>読み上げ <small>オフにすると、読み上げの代わりに短い音で知らせます。iPhoneでは読み上げのたびにほかのアプリの音楽が止まるので、音楽を聴きながら使うときはオフにしてください（短い音はマナーモードのときは鳴りません）</small></span><input type="checkbox" id="voice" aria-label="読み上げ"></div>
 <div class="set"><span>デザイン</span><select id="skin" aria-label="デザイン"><option value="std">標準</option><option value="a">レーシング</option><option value="b">アナログ計器</option><option value="c">HUD</option></select></div>
 <div class="set"><span>二輪モード（ベータ） <small>バイク用。車体の傾き（バンク角）を推定し、左右Gを旋回Gとして表示・記録・採点する</small></span><input type="checkbox" id="bike" aria-label="二輪モード"></div>
 <p class="mcap" id="bikest" hidden>GPSの車速が必要です。0点合わせは車体をまっすぐ立てた状態で行うのが確実ですが、サイドスタンドで合わせても、20km/h以上で直進している間に「直立」を自動で覚えます。勾配の補正は常にオンになります。ベータ版のため、バンク角や採点の基準は今後変わることがあります。</p>
@@ -583,7 +585,7 @@ dialog{width:min(92vw,540px)}
 <div class="btns"><button class="p" id="stx">閉じる</button></div>
 </dialog>
 <script>
-const APP_VERSION='2.10.3',APP_DATE='2026-11-11';
+const APP_VERSION='2.11.0',APP_DATE='2026-11-11';
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m)m.textContent='エラーが起きました（'+(e.message||'不明')+'）。この画面のスクリーンショットを送ってください。'});
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),gc=$('g'),gx=gc.getContext('2d');
 const vc=$('vc'),vcx=vc.getContext('2d'),vg=$('vg'),vgx=vg.getContext('2d');
@@ -709,7 +711,7 @@ $('orbon').onchange=e=>{cfg.orb=e.target.checked;saveCfg();if(!cfg.orb)orbNear=n
 $('od').oninput=e=>{cfg.orbDist=+e.target.value;$('odv').textContent=cfg.orbDist;saveCfg()};
 cfg.orbVoice=cfg.orbVoice!==false;$('orbv').checked=cfg.orbVoice;
 $('orbv').onchange=e=>{cfg.orbVoice=e.target.checked;saveCfg()};
-$('orbvt').onclick=()=>speakJa(ORB_SAY);
+$('orbvt').onclick=()=>{if(cfg.voice===false){msg('「読み上げ」がオフになっています（設定）。');return}speakJa(ORB_SAY)};
 $('oimp').onclick=()=>$('oimpf').click();
 $('oimpf').onchange=async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
@@ -725,6 +727,8 @@ function bikeUi(){const b=!!cfg.bike;$('bike').checked=b;$('bikest').hidden=!b;$
 $('bike').onchange=e=>{cfg.bike=e.target.checked;if(cfg.bike&&!cfg.gp.includes('bank'))cfg.gp.push('bank');saveCfg();gpUi();slReset(true);clearMax();bikeUi()};
 bikeUi();
 $('arec').checked=!!cfg.autoRec;$('arec').onchange=e=>{cfg.autoRec=e.target.checked;saveCfg();arGo=arStop=null;if(cfg.autoRec&&!running)msg('自動記録をオンにしました。「開始」を押すと待機に入り、10km/h以上で走り出すと記録を始めます。')};
+cfg.voice=cfg.voice!==false;$('voice').checked=cfg.voice;audioMode();
+$('voice').onchange=e=>{cfg.voice=e.target.checked;saveCfg();audioMode();if(!cfg.voice){try{speechSynthesis.cancel()}catch(x){}cue('start')}};
 $('skin').onchange=e=>{cfg.skin=e.target.value;saveCfg();skinApply();size()};
 $('fx').onchange=e=>{cfg.fx=e.target.checked;saveCfg();mirror(true,false)};
 $('fy').onchange=e=>{cfg.fy=e.target.checked;saveCfg();mirror(false,true)};
@@ -1283,7 +1287,17 @@ function checkCams(la,lo){
   orbNear=nb;
 }
 const orbTxt=()=>'オービス注意　あと '+Math.round(orbNear.d/10)*10+' m'+(orbNear.name?'　'+orbNear.name:'');
-function speakJa(text){
+// 短い知らせの音（読み上げをオフにしたときの代わり）。Web Audio の音はほかのアプリの音楽と混ざり、マナーモード（消音）のときは鳴らない
+const CUE={start:[523,784],sec:[988,0,988],lap:[660,880,1109],best:[660,880,1109,1319],calstart:[660],cal:[784,988,1175]};
+function cue(kind){
+  const seq=CUE[kind];if(!seq||!ac)return;
+  try{if(ac.state!=='running')ac.resume()}catch(e){}
+  seq.forEach((f,i)=>{if(!f)return;const t=ac.currentTime+.02+i*.13,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.11);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.13)});
+}
+function audioMode(){try{if(navigator.audioSession)navigator.audioSession.type=cfg.voice===false?'ambient':'auto'}catch(e){}}   // 読み上げオフ: 音楽と混ぜる（マナーモードでは鳴らない）
+function speakJa(text,alt){   // alt＝読み上げをオフにしているときに代わりに鳴らす音
+  if(cfg.voice===false){if(alt)cue(alt);return}
   try{
     if(!('speechSynthesis' in window))return;
     const u=new SpeechSynthesisUtterance(text);u.lang='ja-JP';u.rate=1;
@@ -1292,7 +1306,7 @@ function speakJa(text){
     speechSynthesis.cancel();speechSynthesis.speak(u);
   }catch(e){speaking=false}
 }
-function unlockSpeech(){try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}}   // iPhoneは最初の読み上げをタップ操作の中で行う必要がある
+function unlockSpeech(){if(cfg.voice===false)return;try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}}   // iPhoneは最初の読み上げをタップ操作の中で行う必要がある
 const ORB_SAY='この先、スピードに注意してください';
 function orbAlert(){
   if(cfg.orbVoice)setTimeout(()=>speakJa(ORB_SAY),1100);   // チャイムのあとに読み上げ
@@ -1388,17 +1402,17 @@ function lapFix(la,lo,ts){
   }
   LP.prev=q;
 }
-function lapStartSay(){msg('ラップタイム計測を開始しました');if(cfg.lapVoice!==false)speakJa('ラップタイム計測を開始しました')}
+function lapStartSay(){msg('ラップタイム計測を開始しました');if(cfg.lapVoice!==false)speakJa('ラップタイム計測を開始しました','start')}
 function secDone(k){   // セクションの線を通過：短いチャイムと、そのセクションのタイム・ベストとの差
   const sp=LP.splits,v=sp[k]-(k?sp[k-1]:0),b=LP.bestSec[k];
   LP.secMsg={k,e:sp[k],v:isFinite(v)?v:null,d:b!=null&&isFinite(v)?v-b:null,until:performance.now()+8000};   // e＝スタートからここまでのタイム
-  if(cfg.lapVoice!==false&&isFinite(sp[k]))setTimeout(()=>speakJa('セクション'+(k+1)+'、'+sayLap(sp[k])),150);
+  if(cfg.lapVoice!==false&&isFinite(sp[k]))setTimeout(()=>speakJa('セクション'+(k+1)+'、'+sayLap(sp[k]),'sec'),150);
   if(ac){const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=1175;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.01);g.gain.linearRampToValueAtTime(0,t+.09);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.1)}
 }
 function lapDone(lap,isBest,prevBest,b){
   if(lap.secs){const k=lap.secs.length-1,v=lap.secs[k];LP.secMsg={k,v,d:v!=null&&b!=null?v-b:null,until:performance.now()+8000}}
   if(ac)[[0,1319],[.13,1760]].forEach(([d,f])=>{const t=ac.currentTime+d,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.35,t+.01);g.gain.linearRampToValueAtTime(0,t+.12);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.14)});
-  if(cfg.lapVoice!==false)setTimeout(()=>speakJa('ラップ'+lap.n+'、'+sayLap(lap.time)+(isBest&&prevBest!=null?'、ベスト':'')),350);
+  if(cfg.lapVoice!==false)setTimeout(()=>speakJa('ラップ'+lap.n+'、'+sayLap(lap.time)+(isBest&&prevBest!=null?'、ベスト':''),isBest&&prevBest!=null?'best':'lap'),350);
   msg('ラップ '+lap.n+'：'+fmtLap(lap.time)+(isBest?(prevBest!=null?'（ベスト更新）':''):'（ベスト '+fmtLap(LP.best)+'）'));
   renderLapList();
 }
@@ -2815,7 +2829,7 @@ function ycalStart(){
   if(YC){YC=null;msg('向き合わせをやめました。');ycalUi();return}
   YC={t0:performance.now(),ev:null,gap:0};ycalUi();stClose();
   msg('向き合わせ中：まっすぐな道で、しっかりブレーキ（0.2G以上、1秒ほど）を踏んでください。加速でも合わせられます。');
-  if(cfg.lapVoice!==false)speakJa('向き合わせを始めます。まっすぐ走って、しっかりブレーキを踏んでください');
+  if(cfg.lapVoice!==false)speakJa('向き合わせを始めます。まっすぐ走って、しっかりブレーキを踏んでください','calstart');
 }
 function ycalUi(){$('ycal').textContent=YC?'中止':'向き';$('ycal').classList.toggle('on',!!YC)}
 function ycalStep(lat,lon,dt,now){   // lat・lon＝今の設定の向きで見た、スマホの右・前の G（反転の設定をかける前）
@@ -2841,7 +2855,7 @@ function ycalStep(lat,lon,dt,now){   // lat・lon＝今の設定の向きで見�
   YC=null;ycalUi();yawSet(v);
   const lab=(cfg.yaw>0?'右':cfg.yaw<0?'左':'')+Math.abs(cfg.yaw)+'度';
   msg('向きを合わせました：'+(cfg.yaw?(cfg.yaw>0?'右':'左')+Math.abs(cfg.yaw)+'°':'0°（ずれなし）')+'（'+(brake?'ブレーキ':'加速')+' '+mean.toFixed(2)+'G・'+E.T.toFixed(1)+'秒'+(dsp==null?'、GPSなしのためブレーキとみなしました':'')+'）。'+(fl?'左右反転・前後反転はオフにしました。':'')+'もう一度合わせると、ばらつきを確かめられます。');
-  if(cfg.lapVoice!==false)speakJa('向きを合わせました。'+(cfg.yaw?lab:'ずれはありません'));
+  if(cfg.lapVoice!==false)speakJa('向きを合わせました。'+(cfg.yaw?lab:'ずれはありません'),'cal');
 }
 // main loop
 function loop(now){
